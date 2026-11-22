@@ -1,5 +1,5 @@
 // Offline-Cache: App-Shell cache-first, bei neuer Version wird CACHE hochgezählt.
-const CACHE='gymtracker-v0.3.1';
+const CACHE='gymtracker-v0.3.2';
 const FILES=['./','index.html','style.css','app.js','seed.js','strava.js','manifest.webmanifest','icons/icon-180.png','icons/icon-192.png','icons/icon-512.png'];
 self.addEventListener('install',e=>{ e.waitUntil(caches.open(CACHE).then(c=>c.addAll(FILES)).then(()=>self.skipWaiting())); });
 self.addEventListener('activate',e=>{ e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim())); });

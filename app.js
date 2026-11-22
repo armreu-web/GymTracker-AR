@@ -1,7 +1,7 @@
 (function(){
 'use strict';
 const KEY='gymtracker.v1';
-const VERSION='0.3.1';
+const VERSION='0.3.2';
 
 /* ---------------- state ---------------- */
 let S=null;
@@ -98,11 +98,13 @@ function beep(kind){
   try{
     if(!actx) return; if(actx.state!=='running') actx.resume();
     if(S.settings.ignoreMute&&navigator.audioSession){ try{ navigator.audioSession.type='playback'; setTimeout(()=>{try{navigator.audioSession.type='auto'}catch(e){}},1600); }catch(e){} }
-    const tones=kind==='short'?[[0,1046]]:[[0,880],[.3,880],[.6,1320]];
+    // [Startzeit s, Frequenz Hz, Dauer s]
+    const tones=kind==='short'?[[0,1046,.25]]:kind==='tick'?[[0,880,.13]]:kind==='go'?[[0,1320,.7]]
+      :kind==='demo'?[[0,880,.13],[1,880,.13],[2,880,.13],[3,880,.13],[4,1320,.7]]:[[0,880,.25],[.3,880,.25],[.6,1320,.25]];
     const vol=S.settings.volume||0.8;
-    tones.forEach(([t,f])=>{
+    tones.forEach(([t,f,d])=>{
       const o=actx.createOscillator(), g=actx.createGain(); o.type='sine'; o.frequency.value=f; o.connect(g); g.connect(actx.destination);
-      const s=actx.currentTime+t+.03; g.gain.setValueAtTime(.0001,s); g.gain.exponentialRampToValueAtTime(vol,s+.02); g.gain.exponentialRampToValueAtTime(.0001,s+.25); o.start(s); o.stop(s+.27);
+      const s=actx.currentTime+t+.03; g.gain.setValueAtTime(.0001,s); g.gain.exponentialRampToValueAtTime(vol,s+.02); g.gain.setValueAtTime(vol,s+Math.max(.03,d-.08)); g.gain.exponentialRampToValueAtTime(.0001,s+d); o.start(s); o.stop(s+d+.02);
     });
   }catch(e){}
   try{ navigator.vibrate&&navigator.vibrate([200,100,200]); }catch(e){}
@@ -348,7 +350,7 @@ function vSettings(){
       <div class="toggle"><span>Ton am Pausenende</span><div class="seg" style="width:160px"><button class="${S.settings.sound?'on':''}" data-a="set" data-f="sound" data-v="1">An</button><button class="${!S.settings.sound?'on':''}" data-a="set" data-f="sound" data-v="0">Aus</button></div></div>
       <div class="toggle"><span>Auch im Stumm-Modus<br><span class="note">kann Musik kurz unterbrechen</span></span><div class="seg" style="width:160px"><button class="${S.settings.ignoreMute?'on':''}" data-a="set" data-f="ignoreMute" data-v="1">An</button><button class="${!S.settings.ignoreMute?'on':''}" data-a="set" data-f="ignoreMute" data-v="0">Aus</button></div></div>
       <div class="field"><span>Lautstärke</span><div class="seg">${[[0.3,'leise'],[0.6,'mittel'],[0.8,'laut'],[1,'max']].map(([v,l])=>`<button class="${S.settings.volume==v?'on':''}" data-a="set" data-f="volume" data-v="${v}">${l}</button>`).join('')}</div></div>
-      <button class="btn block" data-a="test-sound">🔊 Ton testen</button>
+      <button class="btn block" data-a="test-sound">🔊 Pausenende testen (4 Beeps + Start)</button>
     </section>
     ${dl?`<section class="sect"><h3>Kreuzheben · LWS</h3>
       <label class="field"><span>Obergrenze kg</span><input class="inp num" inputmode="decimal" data-f="dlcap" value="${dl.cap?fw(dl.cap):''}"></label>
@@ -439,7 +441,9 @@ function tick(){
   }
   if(a.rest){
     const left=(a.rest.end-now)/1000;
-    if(left<=0&&!a.rest.beeped){ a.rest.beeped=true; save(); if(left>-10) beep(); }
+    // Countdown: 4 kurze Beeps im Sekundentakt, dann der Startton
+    if(left>0&&left<=4){ const sec=Math.ceil(left); if(a.rest.cd!==sec){ a.rest.cd=sec; beep('tick'); } }
+    if(left<=0&&!a.rest.beeped){ a.rest.beeped=true; save(); if(left>-10) beep('go'); }
     if(left<-20){ a.rest=null; save(); restEl.hidden=true; return; }
     const nt=nextText(a.cur);
     if(restEl.hidden||restEl.dataset.k!==String(a.rest.end)+(left<=0)){
@@ -496,7 +500,7 @@ document.addEventListener('click',ev=>{
     case 'skip': { const it=curItem(), from=a.cur; it.skipped=true; const n=findNext(a.cur); if(n>=0) a.cur=n; sheet=null; save(); render();
       toast('Übersprungen',()=>{ it.skipped=false; a.cur=from; save(); render(); }); if(n<0){ sheet='finish'; render(); } break; }
     case 'pick-ex': pickExercise(b.dataset.id); break;
-    case 'rest-add': a.rest.end=Math.max(Date.now()+1000,a.rest.end+ +b.dataset.v*1000); a.rest.total=Math.max(a.rest.total,a.rest.end-Date.now()); a.rest.beeped=false; restEl.dataset.k=''; save(); tick(); break;
+    case 'rest-add': a.rest.end=Math.max(Date.now()+1000,a.rest.end+ +b.dataset.v*1000); a.rest.total=Math.max(a.rest.total,a.rest.end-Date.now()); a.rest.beeped=false; a.rest.cd=null; restEl.dataset.k=''; save(); tick(); break;
     case 'rest-skip': a.rest=null; save(); render(); break;
     case 'finish': finishWorkout(); break;
     case 'discard': if(confirmKey!=='discard'){ confirmKey='discard'; render(); } else { confirmKey=null; S.active=null; sheet=null; unlockScreen(); save(); render(); toast('Training verworfen'); } break;
@@ -512,7 +516,7 @@ document.addEventListener('click',ev=>{
     case 'seg': setField(b.dataset.f,b.dataset.v); keepScroll=true; render(); break;
     // settings
     case 'set': { const f=b.dataset.f, v=b.dataset.v; S.settings[f]=f==='volume'?+v:v==='1'; save(); keepScroll=true; render(); break; }
-    case 'test-sound': unlockAudio(); setTimeout(()=>beep(),50); break;
+    case 'test-sound': unlockAudio(); setTimeout(()=>beep('demo'),50); break;
     case 'export': exportData(); break;
     case 'upload': doUpload(b.dataset.id); break;
     case 'go-strava': sheet=null; view='settings'; render(); document.getElementById('strava')?.scrollIntoView(); break;
