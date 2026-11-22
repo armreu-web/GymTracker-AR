@@ -1,7 +1,7 @@
 (function(){
 'use strict';
 const KEY='gymtracker.v1';
-const VERSION='0.4.0';
+const VERSION='0.4.1';
 
 /* ---------------- state ---------------- */
 let S=null;
@@ -13,6 +13,9 @@ if(!S||!S.exercises||!Array.isArray(S.plans)) S=window.GT_SEED();
     e.strava=seed[e.id]&&seed[e.id].strava||v.toUpperCase().replace(/[^A-Z0-9]+/g,'_').replace(/^_|_$/g,''); ch=true; });
   if(ch) save();
 })();
+// Migration 0.5: Maschinen/Kabelzug in 1-kg-Schritten (Armin, 22.11.), nur wenn noch der alte Standard drin ist
+(function(){ if(S.mig05) return; const l=S.exercises.legpress, f=S.exercises.face;
+  if(l&&l.step===2.5) l.step=1; if(f&&f.step===5) f.step=1; S.mig05=true; save(); })();
 // Migration 0.4: die zwei „Unbekannt“-Übungen sind geklärt (Armin, 22.11.): in seinen eigenen Trainings und Plan B
 // war Unbekannt 1 = Rudern brustgestützt, Unbekannt 2 = Seitheben; in den Strava-Startdaten genau umgekehrt.
 (function(){
