@@ -1,21 +1,21 @@
 // Startdaten: Übungen, zwei Pläne und Verlauf aus Armins Strava-Krafttrainings (Okt./Nov. 2026).
-// "strava" = Übungsname wie Strava ihn anzeigt; wird später auf den exercise_type der Upload-API gemappt.
+// "strava" = exercise_type aus Stravas Upload-Katalog (leer = landet nur in der Beschreibung).
 window.GT_SEED = function(){
   const ex = {
-    cardio:  {name:'Cardio Aufwärmen',            type:'time',       strava:'Cardio',                       step:0,   rest:30},
-    dl:      {name:'Kreuzheben (Langhantel)',      type:'weight',     strava:'Barbell Deadlift',             step:2.5, rest:90, cap:50, note:'LWS: Obergrenze beachten, nur sauber steigern.'},
-    incl:    {name:'Schrägbankdrücken KH',         type:'weight',     strava:'Incline Dumbbell Bench Press', step:2.5, rest:60},
-    lunge:   {name:'Ausfallschritt rückwärts KH',  type:'weight',     strava:'Dumbbell Reverse Lunge',       step:2.5, rest:60, note:'Wdh. = beide Beine zusammen.'},
-    row:     {name:'Rudern brustgestützt',         type:'weight',     strava:'Chest-Supported Row',          step:2.5, rest:60},
-    negpu:   {name:'Negativ-Klimmzüge',            type:'bodyweight', strava:'Negative Pull-Up',             step:2.5, rest:60},
-    face:    {name:'Face Pull',                    type:'weight',     strava:'Face Pull',                    step:5,   rest:60},
-    deadbug: {name:'Deadbug',                      type:'weight',     strava:'Deadbug',                      step:2.5, rest:45},
-    plank:   {name:'Seitstütz',                    type:'time',       strava:'Side Plank',                   step:5,   rest:30, note:'Abwechselnd links und rechts.'},
-    legpress:{name:'Beinpresse',                   type:'weight',     strava:'Machine Leg Press',            step:2.5, rest:60},
-    calf:    {name:'Wadenheben stehend',           type:'weight',     strava:'Standing Calf Raise',          step:2.5, rest:45},
+    cardio:  {name:'Cardio Aufwärmen',            type:'time',       strava:'CARDIO_GENERIC',                       step:0,   rest:30},
+    dl:      {name:'Kreuzheben (Langhantel)',      type:'weight',     strava:'BARBELL_DEADLIFT',             step:2.5, rest:90, cap:50, note:'LWS: Obergrenze beachten, nur sauber steigern.'},
+    incl:    {name:'Schrägbankdrücken KH',         type:'weight',     strava:'INCLINE_DUMBBELL_BENCH_PRESS', step:2.5, rest:60},
+    lunge:   {name:'Ausfallschritt rückwärts KH',  type:'weight',     strava:'DUMBBELL_REVERSE_LUNGE',       step:2.5, rest:60, note:'Wdh. = beide Beine zusammen.'},
+    row:     {name:'Rudern brustgestützt',         type:'weight',     strava:'CHEST_SUPPORTED_ROW',          step:2.5, rest:60},
+    negpu:   {name:'Negativ-Klimmzüge',            type:'bodyweight', strava:'NEGATIVE_PULL_UP',             step:2.5, rest:60},
+    face:    {name:'Face Pull',                    type:'weight',     strava:'FACE_PULL',                    step:5,   rest:60},
+    deadbug: {name:'Deadbug',                      type:'weight',     strava:'DEADBUG',                      step:2.5, rest:45},
+    plank:   {name:'Seitstütz',                    type:'time',       strava:'SIDE_PLANK',                   step:5,   rest:30, note:'Abwechselnd links und rechts.'},
+    legpress:{name:'Beinpresse',                   type:'weight',     strava:'MACHINE_LEG_PRESS',            step:2.5, rest:60},
+    calf:    {name:'Wadenheben stehend',           type:'weight',     strava:'STANDING_CALF_RAISE',          step:2.5, rest:45},
     u1:      {name:'Unbekannt 1 (ca. 10 kg)',      type:'weight',     strava:'',                             step:2.5, rest:60, note:'In Strava stand „Unknown“. Bitte unter Pläne umbenennen.'},
     u2:      {name:'Unbekannt 2 (ca. 30 kg)',      type:'weight',     strava:'',                             step:2.5, rest:60, note:'In Strava stand „Unknown“. Bitte unter Pläne umbenennen.'},
-    oblcr:   {name:'Seitlicher Crunch',            type:'bodyweight', strava:'Oblique Crunch',               step:2.5, rest:45},
+    oblcr:   {name:'Seitlicher Crunch',            type:'bodyweight', strava:'OBLIQUE_CRUNCH',               step:2.5, rest:45},
   };
   Object.keys(ex).forEach(k=>ex[k].id=k);
 

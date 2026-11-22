@@ -1,17 +1,25 @@
 (function(){
 'use strict';
 const KEY='gymtracker.v1';
-const VERSION='0.2.0';
+const VERSION='0.3.0';
 
 /* ---------------- state ---------------- */
 let S=null;
 try{ S=JSON.parse(localStorage.getItem(KEY)||'null'); }catch(e){ S=null; }
 if(!S||!S.exercises||!Array.isArray(S.plans)) S=window.GT_SEED();
+// Migration 0.3: Feld "strava" enthält jetzt Stravas exercise_type (z. B. BARBELL_DEADLIFT)
+(function(){ const seed=window.GT_SEED().exercises; let ch=false;
+  Object.values(S.exercises).forEach(e=>{ const v=e.strava||''; if(!v||/^[A-Z0-9_]+$/.test(v)) return;
+    e.strava=seed[e.id]&&seed[e.id].strava||v.toUpperCase().replace(/[^A-Z0-9]+/g,'_').replace(/^_|_$/g,''); ch=true; });
+  if(ch) save();
+})();
 function save(){ try{ localStorage.setItem(KEY,JSON.stringify(S)); }catch(e){ toast('Speichern fehlgeschlagen'); } }
 try{ navigator.storage&&navigator.storage.persist&&navigator.storage.persist(); }catch(e){}
 
 // UI state (not persisted)
 let view='home', editPlan=null, editItem=-1, sheet=null, sheetArg=null, confirmKey=null;
+let up=null; // laufender Strava-Upload {id,msg,err}
+const SV=window.GTStrava;
 
 const app=document.getElementById('app');
 const restEl=document.getElementById('rest');
@@ -155,7 +163,7 @@ function logSet(value){
 }
 function finishWorkout(){
   const a=A();
-  const ex=a.ex.filter(i=>i.done.length).map(i=>({ex:i.ex,sets:i.done.map(s=>s.s!=null?{s:s.s}:{w:s.w,r:s.r})}));
+  const ex=a.ex.filter(i=>i.done.length).map(i=>({ex:i.ex,sets:i.done.map(s=>s.s!=null?{s:s.s,t:s.t}:{w:s.w,r:s.r,t:s.t})}));
   unlockScreen();
   if(!ex.length){ S.active=null; sheet=null; save(); render(); toast('Leeres Training verworfen'); return; }
   const w={id:uid('w'),plan:a.plan,name:a.name,start:a.start,end:Date.now(),ex,sync:'offen'};
@@ -199,7 +207,7 @@ function vHome(){
       <span class="go">▶ Training starten</span></button>`:`<div class="card"><b>Kein aktiver Plan</b><p class="note">Leg unter „Pläne“ einen an.</p></div>`}
     ${others.length?`<section class="sect"><h3>Oder stattdessen</h3><div class="list">${others.map(p=>`<button class="card" data-a="start" data-id="${esc(p.id)}"><div class="row"><b>${esc(p.name)}</b><span class="muted">▶</span></div><span class="note">${esc(planLine(p))}</span></button>`).join('')}</div></section>`:''}
     <div class="links"><button class="btn" data-a="go" data-v="plans">Pläne</button><button class="btn" data-a="start-free">Ohne Plan</button></div>
-    ${hist.length?`<section class="sect"><h3>Letzte Trainings</h3><div class="list">${hist.map(h=>{const st=stats(h);return `<button class="card" data-a="hist" data-id="${esc(h.id)}"><div class="row"><b>${esc(dfmt(h.start))} · ${esc(h.name||planName(h.plan))}</b><span class="muted num">${st.sets} Sätze</span></div><span class="note">${esc(h.ex.map(e=>EX(e.ex).name).join(', '))}${h.source==='strava'?' · <span class="badge">aus Strava</span>':''}</span></button>`}).join('')}</div></section>`:''}
+    ${hist.length?`<section class="sect"><h3>Letzte Trainings</h3><div class="list">${hist.map(h=>{const st=stats(h);return `<button class="card" data-a="hist" data-id="${esc(h.id)}"><div class="row"><b>${esc(dfmt(h.start))} · ${esc(h.name||planName(h.plan))}</b><span class="muted num">${st.sets} Sätze</span></div><span class="note">${esc(h.ex.map(e=>EX(e.ex).name).join(', '))}${h.source==='strava'?' · <span class="badge">aus Strava</span>':h.stravaId?' · <span class="badge">in Strava ✓</span>':' · <span class="badge" style="color:var(--warn)">nicht hochgeladen</span>'}</span></button>`}).join('')}</div></section>`:''}
     <p class="note">Version ${VERSION} · Daten bleiben nur auf diesem Gerät.</p>
   </main>`;
 }
@@ -302,10 +310,35 @@ function vItemEdit(){
     ${e.type!=='time'?`<div class="field"><span>Gewichtsschritt</span>${seg('ex.step',e.step,[[1,'1 kg'],[2.5,'2,5 kg'],[5,'5 kg']])}</div>
     <label class="field"><span>Obergrenze kg (leer = keine)</span><input class="inp num" inputmode="decimal" data-f="ex.cap" value="${e.cap?fw(e.cap):''}" placeholder="z. B. 50"></label>`:''}
     <label class="field"><span>Hinweis im Training</span><input class="inp" data-f="ex.note" value="${esc(e.note||'')}" placeholder="optional"></label>
-    <label class="field"><span>Name in Strava</span><input class="inp" data-f="ex.strava" value="${esc(e.strava||'')}" placeholder="z. B. Lat Pulldown"></label>
+    <label class="field"><span>Strava-Übung (exercise_type)</span><input class="inp" data-f="ex.strava" list="stypes" autocapitalize="characters" autocomplete="off" value="${esc(e.strava||'')}" placeholder="z. B. LAT_PULLDOWN"></label>
+    <datalist id="stypes">${SV.TYPES.map(t=>`<option value="${t}">`).join('')}</datalist>
+    <p class="note">Leer = Übung landet in Strava nur als Text in der Beschreibung.</p>
     <p class="note">Name, Typ, Pause, Schritt und Obergrenze gelten für die Übung in allen Plänen. Sätze und Ziel nur für diesen Plan.</p>
     <button class="btn ${confirmKey==='delitem'?'danger':'ghost'} block" data-a="del-item">${confirmKey==='delitem'?'Wirklich aus dem Plan nehmen?':'Aus diesem Plan entfernen'}</button>
   </main>`;
+}
+function vUpload(w){
+  if(w.stravaId) return `<a class="btn good block" href="https://www.strava.com/activities/${esc(w.stravaId)}" target="_blank" rel="noopener" style="text-decoration:none">✓ In Strava ansehen</a>${w.stravaMissing&&w.stravaMissing.length?`<p class="note">Nur in der Beschreibung (ohne Strava-Übung): ${esc(w.stravaMissing.join(', '))}</p>`:''}`;
+  if(up&&up.id===w.id&&!up.err) return `<button class="btn block" disabled>${esc(up.msg)}</button>`;
+  const err=up&&up.id===w.id&&up.err?`<p class="note" style="color:var(--bad)">${esc(up.err)}</p>`:'';
+  if(!SV.connected()) return err+`<button class="btn ghost block" data-a="go-strava">Strava verbinden, dann hochladen</button>`;
+  const b=SV.build(w,EX);
+  return err+`<button class="btn primary block" data-a="upload" data-id="${esc(w.id)}">⇪ Nach Strava hochladen</button>${b.missing.length?`<p class="note">Ohne Strava-Übung, landen nur in der Beschreibung: ${esc(b.missing.join(', '))}</p>`:''}`;
+}
+async function doUpload(id){
+  const w=S.history.find(h=>h.id===id); if(!w||(up&&up.id===id&&!up.err)) return;
+  up={id,msg:'Verbinde mit Strava …'}; render();
+  try{
+    const r=await SV.upload(w,EX,m=>{ up.msg=m; render(); });
+    if(r.pending){ up={id,err:'Strava braucht länger als sonst. Schau gleich in Strava nach, bevor du nochmal hochlädst.'}; }
+    else{ w.stravaId=r.activityId; w.stravaMissing=r.missing; w.sync='ok'; up=null; save(); toast(r.duplicate?'War schon in Strava':'In Strava ✓'); }
+  }catch(e){ up={id,err:e.message||'Upload fehlgeschlagen'}; }
+  render();
+}
+async function doExchange(code,scope){
+  try{ await SV.exchange(code,scope); toast('Strava verbunden ✓'); }
+  catch(e){ toast(e.message||'Verbinden fehlgeschlagen'); }
+  view='settings'; sheet=null; render();
 }
 function vSettings(){
   const dl=S.exercises.dl;
@@ -320,6 +353,7 @@ function vSettings(){
     ${dl?`<section class="sect"><h3>Kreuzheben · LWS</h3>
       <label class="field"><span>Obergrenze kg</span><input class="inp num" inputmode="decimal" data-f="dlcap" value="${dl.cap?fw(dl.cap):''}"></label>
       <p class="note">Die App schlägt nie mehr vor und lässt beim Kreuzheben nicht höher stellen.</p></section>`:''}
+    ${vStravaSettings()}
     <section class="sect"><h3>Sicherung</h3>
       <p class="note">Safari kann Daten löschen, wenn die App lange nicht benutzt wird. Ab und zu sichern schadet nicht.</p>
       <div class="grid2"><button class="btn" data-a="export">Sichern (Datei)</button><label class="btn" style="cursor:pointer">Wiederherstellen<input type="file" accept="application/json,.json" id="importFile" hidden></label></div>
@@ -330,9 +364,32 @@ function vSettings(){
   </main>`;
 }
 
+function vStravaSettings(){
+  const c=SV.cfg();
+  const status=SV.connected()?`<div class="card"><b>✓ Verbunden${c.athlete&&c.athlete.name?' als '+esc(c.athlete.name):''}</b><span class="note">Nach jedem Training kannst du es mit einem Tipp hochladen.</span></div>`
+    :`<p class="note">Einmalig: Client-ID und Client-Secret aus <a href="https://www.strava.com/settings/api" target="_blank" rel="noopener" style="color:var(--accent)">strava.com/settings/api</a> hier eintragen. Sie bleiben nur auf diesem iPhone.</p>`;
+  return `<section class="sect" id="strava"><h3>Strava</h3>${status}
+    <form id="stravaForm" class="list">
+      <label class="field"><span>Client-ID</span><input class="inp num" id="sid" inputmode="numeric" autocomplete="off" value="${esc(c.clientId||'')}"></label>
+      <label class="field"><span>Client-Secret</span><input class="inp" id="ssec" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="${c.clientSecret?'gespeichert ✓ (leer lassen = behalten)':'aus Strava kopieren'}"></label>
+      <button class="btn block" type="submit">Speichern</button>
+    </form>
+    <button class="btn primary block" data-a="strava-connect" ${SV.hasCreds()?'':'disabled'}>${SV.connected()?'Neu verbinden':'Mit Strava verbinden'}</button>
+    <details><summary class="note" style="min-height:44px;display:flex;align-items:center">Code von Hand einfügen</summary>
+      <form id="codeForm" class="grid2" style="grid-template-columns:1fr auto"><input class="inp" id="scode" autocomplete="off" autocapitalize="off" placeholder="Code aus dem Strava-Fenster"><button class="btn" type="submit">OK</button></form></details>
+    ${SV.connected()||SV.hasCreds()?`<button class="btn ghost block" data-a="strava-forget">${confirmKey==='sforget'?'Wirklich? Zugangsdaten löschen':'Strava trennen und Zugangsdaten löschen'}</button>`:''}
+    <p class="note">In der Strava-API-App muss als „Authorization Callback Domain“ <b>${esc(location.hostname)}</b> stehen.</p>
+  </section>`;
+}
 function vSheet(){
   const a=A();
   const wrap=(title,body,label)=>`<div class="backdrop" data-a="close-bg"><div class="sheet pad" role="dialog" aria-label="${esc(label||title)}"><div class="sheet-h"><h2>${esc(title)}</h2><button class="btn icon" data-a="close" aria-label="Schließen">✕</button></div>${body}</div></div>`;
+  if(sheet==='code'){
+    return wrap('Fast geschafft',`<p>Strava hat dich zurückgeschickt, aber in diesem Fenster kennt die App deine Zugangsdaten nicht (der Home-Bildschirm hat seinen eigenen Speicher).</p>
+      <ol class="note" style="padding-left:20px;margin:0;display:flex;flex-direction:column;gap:6px"><li>Code kopieren</li><li>GymTracker vom Home-Bildschirm öffnen</li><li>⚙︎ → Strava → „Code von Hand einfügen“</li></ol>
+      <input class="inp num" id="codeOut" readonly value="${esc(sheetArg)}" style="font-size:15px">
+      <button class="btn primary block" data-a="copy-code">Code kopieren</button>`);
+  }
   if(sheet==='exlist'&&a){
     const it=curItem();
     return wrap('Übungen',`<div class="list">${a.ex.map((x,i)=>{const e=EX(x.ex);return `<button class="pick${i===a.cur?' on':''}${itemDone(x)&&!x.skipped?' okd':''}" data-a="goto" data-i="${i}"><span><b>${esc(e.name)}</b><br><span class="note num">${esc(targetStr(x,a.start))}</span></span><span class="r num">${x.skipped?'übersprungen':x.done.length+'/'+x.sets+(itemDone(x)?' ✓':'')}</span></button>`}).join('')}</div>
@@ -362,7 +419,7 @@ function vSheet(){
     const st=stats(w);
     return wrap(sheet==='summary'?'Stark. Gespeichert.':dfmt(w.start)+' · '+(w.name||planName(w.plan)),`<div class="stats"><div class="stat"><span class="lbl">Dauer</span><span class="num">${st.dur}′</span></div><div class="stat"><span class="lbl">Sätze</span><span class="num">${st.sets}</span></div><div class="stat"><span class="lbl">kg bewegt</span><span class="num">${fw(Math.round(st.vol))}</span></div></div>
       <ul class="exl">${w.ex.map(e=>`<li><span>${esc(EX(e.ex).name)}</span><span>${esc(setsLine(e.ex,e.sets))}</span></li>`).join('')}</ul>
-      ${w.source==='strava'?'<p class="note">Aus deiner Strava-Historie übernommen.</p>':`<button class="btn ghost block" disabled>Nach Strava senden · kommt im nächsten Schritt</button>`}
+      ${w.source==='strava'?'<p class="note">Aus deiner Strava-Historie übernommen.</p>':vUpload(w)}
       ${sheet==='hist'?`<button class="btn ${confirmKey==='delhist'?'danger':'ghost'} block" data-a="del-hist">${confirmKey==='delhist'?'Wirklich löschen?':'Training löschen'}</button>`:''}
       <button class="btn primary block" data-a="close">Fertig</button>`);
   }
@@ -419,7 +476,7 @@ document.addEventListener('click',ev=>{
   const b=ev.target.closest('[data-a]'); if(!b) return;
   const act=b.dataset.a, a=A();
   if(act==='close-bg'&&ev.target!==b) return;
-  if(!['del-plan','del-item','reset','discard','del-hist'].includes(act)) confirmKey=null;
+  if(!['del-plan','del-item','reset','discard','del-hist','strava-forget'].includes(act)) confirmKey=null;
   switch(act){
     case 'undo': if(undoFn){ undoFn(); undoFn=null; } toastEl.hidden=true; break;
     case 'go': view=b.dataset.v; render(); break;
@@ -457,6 +514,11 @@ document.addEventListener('click',ev=>{
     case 'set': { const f=b.dataset.f, v=b.dataset.v; S.settings[f]=f==='volume'?+v:v==='1'; save(); keepScroll=true; render(); break; }
     case 'test-sound': unlockAudio(); setTimeout(()=>beep(),50); break;
     case 'export': exportData(); break;
+    case 'upload': doUpload(b.dataset.id); break;
+    case 'go-strava': sheet=null; view='settings'; render(); document.getElementById('strava')?.scrollIntoView(); break;
+    case 'strava-connect': location.href=SV.authUrl(); break;
+    case 'strava-forget': if(confirmKey!=='sforget'){ confirmKey='sforget'; keepScroll=true; render(); } else { confirmKey=null; SV.forget(); keepScroll=true; render(); toast('Strava getrennt'); } break;
+    case 'copy-code': { const i=document.getElementById('codeOut'); try{ navigator.clipboard.writeText(i.value).then(()=>toast('Kopiert'),()=>{ i.select(); toast('Markiert, bitte kopieren'); }); }catch(e){ i.select(); } break; }
     case 'reset': if(confirmKey!=='reset'){ confirmKey='reset'; render(); } else { confirmKey=null; S=window.GT_SEED(); view='home'; save(); render(); toast('Zurückgesetzt'); } break;
   }
 });
@@ -478,6 +540,9 @@ function pickExercise(id){
   a.clock=null; sheet=null; save(); render();
 }
 document.addEventListener('submit',ev=>{
+  if(ev.target.id==='stravaForm'){ ev.preventDefault(); const id=document.getElementById('sid').value.trim(), sec=document.getElementById('ssec').value.trim();
+    if(!/^\d+$/.test(id)){ toast('Client-ID ist eine Zahl'); return; } SV.setCreds(id,sec); keepScroll=true; render(); toast(SV.hasCreds()?'Gespeichert. Jetzt verbinden.':'Secret fehlt noch'); return; }
+  if(ev.target.id==='codeForm'){ ev.preventDefault(); let c=document.getElementById('scode').value.trim(); const m=c.match(/code=([^&\s]+)/); if(m) c=m[1]; if(c) doExchange(c,null); return; }
   if(ev.target.id!=='newExForm') return; ev.preventDefault();
   const name=document.getElementById('newExName').value.trim(); if(!name) return;
   let e=Object.values(S.exercises).find(x=>x.name.toLowerCase()===name.toLowerCase());
@@ -497,6 +562,7 @@ function setField(f,v){
     else if(k==='type'){ e.type=v; if(v==='time'&&!it.secs) it.secs=45; if(v!=='time'&&!it.reps) it.reps=10; }
     else if(k==='rest'||k==='step') e[k]=+v;
     else if(k==='cap'){ const c=parseFloat(String(v).replace(',','.')); e.cap=isFinite(c)&&c>0?c:0; }
+    else if(k==='strava') e.strava=v.trim().toUpperCase().replace(/[^A-Z0-9]+/g,'_').replace(/^_|_$/g,'');
     else e[k]=v.trim();
   }
   else if(f==='dlcap'&&S.exercises.dl){ const c=parseFloat(String(v).replace(',','.')); S.exercises.dl.cap=isFinite(c)&&c>0?c:0; toast(S.exercises.dl.cap?'Obergrenze '+fw(S.exercises.dl.cap)+' kg':'Keine Obergrenze'); }
@@ -537,4 +603,9 @@ function importData(file){
 /* ---------------- boot ---------------- */
 if('serviceWorker' in navigator){ window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{})); }
 render(); lockScreen();
+(function(){ const cb=SV.readCallback(); if(!cb) return;
+  if(cb.error){ view='settings'; render(); toast('Strava: Zugriff nicht erlaubt'); return; }
+  if(SV.hasCreds()){ const st=SV.cfg().state; if(st&&cb.state&&st!==cb.state){ toast('Strava-Antwort passt nicht, bitte nochmal verbinden'); return; } doExchange(cb.code,cb.scope); }
+  else { sheet='code'; sheetArg=cb.code; render(); }
+})();
 })();
