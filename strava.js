@@ -20,7 +20,8 @@ const TYPES=('BARBELL_DEADLIFT DEADLIFT_GENERIC TRAP_BAR_DEADLIFT DUMBBELL_DEADL
 'PLANK_GENERIC PLANK_HOLD SIDE_PLANK SIDE_PLANK_HOLD SIDE_PLANK_LEG_RAISE DEADBUG BANDED_DEADBUG PALLOF_PRESS CABLE_CORE_PRESS CRUNCH CABLE_CRUNCH REVERSE_CRUNCH OBLIQUE_CRUNCH BICYCLE_CRUNCH AB_CRUNCH_MACHINE HANGING_KNEE_RAISE HANGING_LEG_RAISE LEG_RAISE_GENERIC '+
 'CARDIO_GENERIC WARM_UP_GENERIC').split(' ');
 
-function load(){ try{ return JSON.parse(localStorage.getItem(KEY)||'{}')||{}; }catch(e){ return {}; } }
+const DEFAULT_CLIENT_ID='299745'; // öffentlich (steht ohnehin in jeder Autorisierungs-URL); das Secret nie hier eintragen
+function load(){ let c; try{ c=JSON.parse(localStorage.getItem(KEY)||'{}')||{}; }catch(e){ c={}; } if(!c.clientId) c.clientId=DEFAULT_CLIENT_ID; return c; }
 function store(c){ try{ localStorage.setItem(KEY,JSON.stringify(c)); }catch(e){} }
 const cfg=()=>load();
 function setCreds(id,secret){ const c=load(); c.clientId=String(id||'').trim(); if(secret) c.clientSecret=String(secret).trim(); store(c); }
