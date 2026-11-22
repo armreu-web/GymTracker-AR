@@ -1,7 +1,8 @@
 (function(){
 'use strict';
 const KEY='gymtracker.v1';
-const VERSION='0.4.1';
+const VERSION='0.5.0';
+const GEN=window.GTGen;
 
 /* ---------------- state ---------------- */
 let S=null;
@@ -34,7 +35,7 @@ function save(){ try{ localStorage.setItem(KEY,JSON.stringify(S)); }catch(e){ to
 try{ navigator.storage&&navigator.storage.persist&&navigator.storage.persist(); }catch(e){}
 
 // UI state (not persisted)
-let view='home', editPlan=null, editItem=-1, sheet=null, sheetArg=null, confirmKey=null;
+let view='home', genSwap=-1, editPlan=null, editItem=-1, sheet=null, sheetArg=null, confirmKey=null;
 let up=null; // laufender Strava-Upload {id,msg,err}
 const SV=window.GTStrava;
 
@@ -48,7 +49,7 @@ const fw=w=>Number(w).toLocaleString('de-DE',{maximumFractionDigits:2});
 const mmss=sec=>{sec=Math.max(0,Math.round(sec));return Math.floor(sec/60)+':'+String(sec%60).padStart(2,'0')};
 const dfmt=t=>new Date(t).toLocaleDateString('de-DE',{weekday:'short',day:'numeric',month:'short'});
 const uid=p=>p+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
-const EX=id=>S.exercises[id]||{id,name:'?',type:'weight',step:2.5,rest:60};
+const EX=id=>S.exercises[id]||GEN.CAT[id]||{id,name:'?',type:'weight',step:2.5,rest:60};
 const A=()=>S.active;
 const curItem=()=>A()&&A().ex[A().cur];
 
@@ -144,11 +145,29 @@ function toast(msg,undo){
 /* ---------------- workout logic ---------------- */
 function startWorkout(plan){
   const items=plan?plan.items:[];
-  S.active={plan:plan?plan.id:null,name:plan?plan.name:'Freies Training',start:Date.now(),cur:0,rest:null,clock:null,
-    ex:items.map(i=>({ex:i.ex,sets:i.sets,reps:i.reps,secs:i.secs,weight:i.weight,done:[],skipped:false,draft:null}))};
+  S.active={plan:plan?plan.id:null,name:plan?plan.name:'Freies Training',focus:plan&&plan.focus||null,start:Date.now(),cur:0,rest:null,clock:null,
+    ex:items.map(i=>({ex:i.ex,sets:i.sets,reps:i.reps,secs:i.secs,weight:i.weight,isNew:!!i.isNew,done:[],skipped:false,draft:null}))};
   view='home'; sheet=S.active.ex.length?null:'swap'; sheetArg='add';
   save(); lockScreen(); render();
 }
+/* ---------------- generator ---------------- */
+// Vorschlag bleibt stehen, bis ein neues Training gespeichert wird (dann kommt der nächste Schwerpunkt)
+function ensureGen(){
+  const g=S.gen;
+  if(g&&g.v===1&&!S.history.some(h=>h.start>=g.created)) return g;
+  S.gen=GEN.generate(S,GEN.suggestFocus(S)); save(); return S.gen;
+}
+function regen(focus){ S.gen=GEN.generate(S,focus||S.gen.focus); save(); }
+function startGen(){
+  const g=ensureGen();
+  // neue Katalogübungen in deine Übungsliste übernehmen (danach gelten deine Einstellungen dafür)
+  g.items.forEach(i=>adoptEx(i.ex));
+  startWorkout({id:'gen:'+g.focus,name:GEN.focusName(g.focus),focus:g.focus,items:g.items});
+}
+function adoptEx(id){ if(S.exercises[id]||!GEN.CAT[id]) return; const c=GEN.CAT[id];
+  const e={id:c.id,name:c.name,type:c.type,strava:c.strava,step:c.step,rest:c.rest}; if(c.cap) e.cap=c.cap; if(c.note) e.note=c.note; S.exercises[c.id]=e; }
+function genNewCount(g){ return g.items.filter(i=>i.isNew).length; }
+
 function itemDone(it){ return it.skipped||it.done.length>=it.sets; }
 function findNext(from){
   const a=A(), n=a.ex.length;
@@ -185,7 +204,7 @@ function finishWorkout(){
   const ex=a.ex.filter(i=>i.done.length).map(i=>({ex:i.ex,sets:i.done.map(s=>s.s!=null?{s:s.s,t:s.t}:{w:s.w,r:s.r,t:s.t})}));
   unlockScreen();
   if(!ex.length){ S.active=null; sheet=null; save(); render(); toast('Leeres Training verworfen'); return; }
-  const w={id:uid('w'),plan:a.plan,name:a.name,start:a.start,end:Date.now(),ex,sync:'offen'};
+  const w={id:uid('w'),plan:a.plan,name:a.name,start:a.start,end:Date.now(),ex,sync:'offen'}; if(a.focus) w.focus=a.focus;
   // manuelles Zielgewicht gilt bis zum nächsten Training dieser Übung, danach zählt das echte Gewicht
   const pl=S.plans.find(p=>p.id===a.plan); if(pl) pl.items.forEach(i=>{ if(ex.some(x=>x.ex===i.ex)) delete i.weight; });
   S.history.push(w); S.active=null; sheet='summary'; sheetArg=w.id; save(); render();
@@ -203,6 +222,7 @@ function render(){
   else if(view==='plan') app.innerHTML=vPlanEdit();
   else if(view==='item') app.innerHTML=vItemEdit();
   else if(view==='settings') app.innerHTML=vSettings();
+  else if(view==='gen') app.innerHTML=vGen();
   else app.innerHTML=vHome();
   if(keepScroll){ const sc=document.querySelector('.scroll'); if(sc) sc.scrollTop=y; } keepScroll=false;
   document.getElementById('sheet')?.remove();
@@ -212,7 +232,56 @@ function render(){
 }
 let keepScroll=false;
 
+function genList(g,interactive){
+  return `<ul class="exl gl${interactive?' ia':''}">${g.items.map((i,k)=>{const e=EX(i.ex);
+    const val=esc(targetStr(i));
+    const nm=`${esc(e.name)}${i.isNew?' <span class="badge new">neu</span>':''}`;
+    if(interactive){ const how=i.isNew&&GEN.CAT[i.ex]&&GEN.CAT[i.ex].how?`<span class="how">${esc(GEN.CAT[i.ex].how)}</span>`:'';
+      const inner=`<span class="gn"><b>${esc(e.name)}</b>${i.isNew?'<span class="badge new">neu</span>':''}${how}</span><span class="num">${val}${i.ex!=='cardio'?' ›':''}</span>`;
+      return i.ex==='cardio'?`<li><div class="gitem static">${inner}</div></li>`:`<li><button class="gitem" data-a="gen-swap" data-i="${k}">${inner}</button></li>`; }
+    return `<li><span>${nm}</span><span class="num">${val}</span></li>`;}).join('')}</ul>`;
+}
 function vHome(){
+  if(!S.settings.genOff) return vHomeGen();
+  return vHomePlans();
+}
+function weekLine(){ const n=GEN.weekCount(S); return `<p class="note">Diese Woche: <b class="num" style="color:var(--fg)">${n}</b> von 3 Einheiten${n>=3?' ✓':''}</p>`; }
+function vHomeGen(){
+  const g=ensureGen(), plans=activePlans();
+  const others=GEN.FOCI.filter(f=>f.id!==g.focus);
+  const hist=S.history.slice().reverse().slice(0,6);
+  return `
+  <header class="home-h pad"><h1>Gym<span>Tracker</span></h1><button class="btn sm ghost" data-a="go" data-v="settings" aria-label="Einstellungen">⚙︎</button></header>
+  <main class="scroll pad">
+    <div class="today">
+      <span class="lbl">Heute dran · ca. ${GEN.estimate(S,g.items)} min${genNewCount(g)?' · '+genNewCount(g)+' neu':''}</span><h2>${esc(GEN.focusName(g.focus))}</h2>
+      ${genList(g,false)}
+      <button class="go-btn" data-a="gen-start">▶ Training starten</button>
+      <button class="adj-btn" data-a="go" data-v="gen">Ansehen &amp; anpassen</button>
+    </div>
+    ${weekLine()}
+    <section class="sect"><h3>Anderer Schwerpunkt</h3><div class="chips">${others.map(f=>`<button class="chip" data-a="gen-focus" data-v="${f.id}">${esc(f.name)}</button>`).join('')}</div></section>
+    ${plans.length?`<section class="sect"><h3>Oder fester Plan</h3><div class="list">${plans.map(p=>`<button class="card" data-a="start" data-id="${esc(p.id)}"><div class="row"><b>${esc(p.name)}</b><span class="muted">▶</span></div><span class="note">${esc(p.items.map(i=>EX(i.ex).name).join(', '))}</span></button>`).join('')}</div></section>`:''}
+    <div class="links"><button class="btn" data-a="go" data-v="plans">Pläne</button><button class="btn" data-a="start-free">Ohne Plan</button></div>
+    ${histSection(hist)}
+    <p class="note">Version ${VERSION} · Daten bleiben nur auf diesem Gerät.</p>
+  </main>`;
+}
+function histSection(hist){
+  return hist.length?`<section class="sect"><h3>Letzte Trainings</h3><div class="list">${hist.map(h=>{const st=stats(h);return `<button class="card" data-a="hist" data-id="${esc(h.id)}"><div class="row"><b>${esc(dfmt(h.start))} · ${esc(h.name||planName(h.plan))}</b><span class="muted num">${st.sets} Sätze</span></div><span class="note">${esc(h.ex.map(e=>EX(e.ex).name).join(', '))}${h.source==='strava'?' · <span class="badge">aus Strava</span>':h.stravaId?' · <span class="badge">in Strava ✓</span>':' · <span class="badge" style="color:var(--warn)">nicht hochgeladen</span>'}</span></button>`}).join('')}</div></section>`:'';
+}
+function vGen(){
+  const g=ensureGen(), n=genNewCount(g);
+  return `<header class="bar pad"><button class="btn icon" data-a="go" data-v="home" aria-label="Zurück">‹</button><div class="grow"><b>${esc(GEN.focusName(g.focus))}</b><span class="note">ca. ${GEN.estimate(S,g.items)} min · ${g.items.length-1} Übungen + Cardio</span></div><button class="btn sm" data-a="gen-reroll">🎲 Neu</button></header>
+  <main class="scroll pad">
+    <p class="note">Tipp auf eine Übung, um sie zu tauschen.${n?` ${n} neue Übung${n>1?'en':''} drin (max. ${GEN.MAX_NEW}), die Gewichte dafür sind bewusst leicht.`:''}</p>
+    ${genList(g,true)}
+    <div class="chips">${GEN.FOCI.map(f=>`<button class="chip${f.id===g.focus?' on':''}" data-a="gen-focus" data-v="${f.id}">${esc(f.name)}</button>`).join('')}</div>
+    <p class="note">Gewicht: wie letztes Mal, +1 Schritt wenn du alle Ziel-Wdh. geschafft hast. Kreuzheben höchstens +2,5 kg und nie über deine Obergrenze.</p>
+  </main>
+  <footer class="dock pad" style="grid-template-columns:1fr"><button class="done-btn" data-a="gen-start">▶ Training starten</button></footer>`;
+}
+function vHomePlans(){
   const np=nextPlan(), others=activePlans().filter(p=>p!==np);
   const hist=S.history.slice().reverse().slice(0,6);
   const planLine=p=>p.items.map(i=>EX(i.ex).name).join(', ');
@@ -226,7 +295,7 @@ function vHome(){
       <span class="go">▶ Training starten</span></button>`:`<div class="card"><b>Kein aktiver Plan</b><p class="note">Leg unter „Pläne“ einen an.</p></div>`}
     ${others.length?`<section class="sect"><h3>Oder stattdessen</h3><div class="list">${others.map(p=>`<button class="card" data-a="start" data-id="${esc(p.id)}"><div class="row"><b>${esc(p.name)}</b><span class="muted">▶</span></div><span class="note">${esc(planLine(p))}</span></button>`).join('')}</div></section>`:''}
     <div class="links"><button class="btn" data-a="go" data-v="plans">Pläne</button><button class="btn" data-a="start-free">Ohne Plan</button></div>
-    ${hist.length?`<section class="sect"><h3>Letzte Trainings</h3><div class="list">${hist.map(h=>{const st=stats(h);return `<button class="card" data-a="hist" data-id="${esc(h.id)}"><div class="row"><b>${esc(dfmt(h.start))} · ${esc(h.name||planName(h.plan))}</b><span class="muted num">${st.sets} Sätze</span></div><span class="note">${esc(h.ex.map(e=>EX(e.ex).name).join(', '))}${h.source==='strava'?' · <span class="badge">aus Strava</span>':h.stravaId?' · <span class="badge">in Strava ✓</span>':' · <span class="badge" style="color:var(--warn)">nicht hochgeladen</span>'}</span></button>`}).join('')}</div></section>`:''}
+    ${histSection(hist)}
     <p class="note">Version ${VERSION} · Daten bleiben nur auf diesem Gerät.</p>
   </main>`;
 }
@@ -273,7 +342,8 @@ function vWorkout(){
   <main class="scroll pad">
     <section class="ex-h"><h2>${esc(e.name)}</h2>
       <span class="sub">Satz <b class="num">${Math.min(idx+1,n)}</b> von <b class="num">${n}</b> · Vorgabe <b class="num">${esc(targetStr(it,a.start))}</b>${itemDone(it)&&!it.skipped?' · <span style="color:var(--good)">fertig</span>':''}${it.skipped?' · übersprungen':''}</span>
-      ${e.note?`<p class="ex-note">${esc(e.note)}</p>`:''}</section>
+      ${e.note?`<p class="ex-note">${esc(e.note)}</p>`:''}
+      ${it.isNew&&GEN.CAT[it.ex]&&GEN.CAT[it.ex].how?`<details class="howbox"><summary>Neu für dich · So geht's</summary><p>${esc(GEN.CAT[it.ex].how)}</p></details>`:''}</section>
     ${big}
     <div class="setdots">${dots.join('')}</div>
     <p class="last">${l?'Letztes Mal ('+esc(dfmt(l.date))+'): <b class="num">'+esc(setsLine(it.ex,l.sets))+'</b>':'Noch keine Vorwerte'}</p>
@@ -372,6 +442,10 @@ function vSettings(){
     ${dl?`<section class="sect"><h3>Kreuzheben · LWS</h3>
       <label class="field"><span>Obergrenze kg</span><input class="inp num" inputmode="decimal" data-f="dlcap" value="${dl.cap?fw(dl.cap):''}"></label>
       <p class="note">Die App schlägt nie mehr vor und lässt beim Kreuzheben nicht höher stellen.</p></section>`:''}
+    <section class="sect"><h3>Workout-Generator</h3>
+      <div class="toggle"><span>Startscreen schlägt vor</span><div class="seg" style="width:200px"><button class="${!S.settings.genOff?'on':''}" data-a="set" data-f="genOff" data-v="0">Generator</button><button class="${S.settings.genOff?'on':''}" data-a="set" data-f="genOff" data-v="1">Pläne</button></div></div>
+      <div class="field"><span>Geräte ausschließen</span><div class="chips">${Object.entries(GEN.EQUIP).map(([k,l])=>{const off=(S.settings.noEquip||[]).includes(k);return `<button class="chip${off?' off':''}" data-a="equip" data-v="${k}" aria-pressed="${off}">${off?'✕ ':''}${esc(l)}</button>`}).join('')}</div></div>
+      <p class="note">Durchgestrichen = schlägt der Generator nicht vor. Übungen mit hoher Last auf dem unteren Rücken kommen nie, Kreuzheben nur mit deiner Obergrenze.</p></section>
     ${vStravaSettings()}
     <section class="sect"><h3>Sicherung</h3>
       <p class="note">Safari kann Daten löschen, wenn die App lange nicht benutzt wird. Ab und zu sichern schadet nicht.</p>
@@ -379,7 +453,7 @@ function vSettings(){
     </section>
     <section class="sect"><h3>Zurücksetzen</h3>
       <button class="btn ${confirmKey==='reset'?'danger':'ghost'} block" data-a="reset">${confirmKey==='reset'?'Wirklich? Alles weg, Startdaten zurück':'Alles auf Startdaten zurücksetzen'}</button></section>
-    <p class="note">GymTracker ${VERSION}. Strava-Upload, Puls und Workout-Generator kommen in den nächsten Ausbaustufen.</p>
+    <p class="note">GymTracker ${VERSION}. Puls kommt in einer späteren Ausbaustufe.</p>
   </main>`;
 }
 
@@ -416,10 +490,19 @@ function vSheet(){
       <div class="grid3"><button class="btn sm" data-a="add-set">+ Satz</button><button class="btn sm" data-a="skip">Überspringen</button><button class="btn sm" data-a="sheet" data-v="swap" data-arg="swap">Tauschen</button></div>`:''}
       <button class="btn block" data-a="sheet" data-v="swap" data-arg="add">+ Übung hinzufügen</button>`);
   }
+  if(sheet==='genswap'&&S.gen&&S.gen.items[genSwap]){
+    const g=S.gen, cur=g.items[genSwap], ce=EX(cur.ex);
+    const used=g.items.map(i=>i.ex);
+    const list=GEN.candidates(S,GEN.slotPats(g.focus,cur.slot),used).sort((x,y)=>(x.isNew-y.isNew)||x.e.name.localeCompare(y.e.name,'de'));
+    return wrap('Tauschen',`<p class="note">Statt <b style="color:var(--fg)">${esc(ce.name)}</b>, passend zum gleichen Slot:</p>
+      <div class="list">${list.map(x=>`<button class="pick" data-a="gen-pick" data-id="${esc(x.e.id)}"><span><b>${esc(x.e.name)}</b>${x.isNew&&x.e.how?`<br><span class="note">${esc(x.e.how)}</span>`:''}</span><span class="r">${x.isNew?'<span class="badge new">neu</span>':''}</span></button>`).join('')||'<p class="note">Keine Alternative mit deinen Geräten.</p>'}</div>
+      <button class="btn ghost block" data-a="gen-del">Übung weglassen</button>`);
+  }
   if(sheet==='swap'){
     const mode=sheetArg; // swap | add | plan
     const used=new Set(mode==='plan'?(S.plans.find(p=>p.id===editPlan)?.items||[]).map(i=>i.ex):(a?a.ex.map(x=>x.ex):[]));
-    const lib=Object.values(S.exercises).filter(e=>!used.has(e.id)).sort((x,y)=>x.name.localeCompare(y.name,'de'));
+    const cat=Object.values(GEN.CAT).filter(c=>!S.exercises[c.id]&&c.lws!=='high');
+    const lib=Object.values(S.exercises).concat(cat).filter(e=>!used.has(e.id)).sort((x,y)=>x.name.localeCompare(y.name,'de'));
     const title=mode==='swap'?'Übung tauschen':'Übung hinzufügen';
     return wrap(title,`<form id="newExForm" class="grid2" style="grid-template-columns:1fr auto"><input class="inp" id="newExName" placeholder="Neue Übung, z. B. Latzug" autocomplete="off" aria-label="Neue Übung"><button class="btn primary" type="submit">OK</button></form>
       <div class="list">${lib.map(e=>`<button class="pick" data-a="pick-ex" data-id="${esc(e.id)}"><b>${esc(e.name)}</b><span class="r">${e.type==='time'?'Zeit':e.type==='bodyweight'?'Eigengew.':''}</span></button>`).join('')}</div>`);
@@ -533,6 +616,16 @@ document.addEventListener('click',ev=>{
     case 'seg': setField(b.dataset.f,b.dataset.v); keepScroll=true; render(); break;
     // settings
     case 'set': { const f=b.dataset.f, v=b.dataset.v; S.settings[f]=f==='volume'?+v:v==='1'; save(); keepScroll=true; render(); break; }
+    case 'equip': { const l=S.settings.noEquip=(S.settings.noEquip||[]), k=b.dataset.v, i=l.indexOf(k); if(i>=0) l.splice(i,1); else l.push(k); if(S.gen) regen(); save(); keepScroll=true; render(); break; }
+    // generator
+    case 'gen-start': startGen(); break;
+    case 'gen-focus': regen(b.dataset.v); keepScroll=view==='gen'; render(); break;
+    case 'gen-reroll': regen(); keepScroll=true; render(); toast('Neu gewürfelt'); break;
+    case 'gen-swap': genSwap=+b.dataset.i; sheet='genswap'; render(); break;
+    case 'gen-pick': { const g=S.gen, old=g.items[genSwap]; const e=GEN.info(S,b.dataset.id); const k=GEN.known(S);
+      g.items[genSwap]=GEN.makeItem(S,e,!k.has(e.id),old.slot); sheet=null; save(); keepScroll=true; render();
+      if(genNewCount(g)>GEN.MAX_NEW) toast('Jetzt '+genNewCount(g)+' neue Übungen drin, ambitioniert!'); break; }
+    case 'gen-del': { S.gen.items.splice(genSwap,1); sheet=null; save(); keepScroll=true; render(); toast('Übung raus'); break; }
     case 'test-sound': unlockAudio(); setTimeout(()=>beep('demo'),50); break;
     case 'export': exportData(); break;
     case 'upload': doUpload(b.dataset.id); break;
@@ -545,7 +638,7 @@ document.addEventListener('click',ev=>{
 });
 
 function pickExercise(id){
-  const a=A();
+  const a=A(); adoptEx(id);
   if(sheetArg==='plan'){
     const p=S.plans.find(x=>x.id===editPlan); const e=EX(id);
     p.items.push({ex:id,sets:e.type==='time'?3:3,reps:e.type==='time'?0:10,secs:e.type==='time'?45:0});

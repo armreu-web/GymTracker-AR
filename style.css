@@ -147,3 +147,28 @@ select.inp{appearance:none;-webkit-appearance:none}
   .clockbig{font-size:92px}
   .ex-h h2{font-size:28px}
 }
+
+/* generator */
+.badge.new{background:var(--warn);color:#1a1400}
+.today .badge.new{background:#fff;color:var(--accent)}
+.go-btn{margin-top:10px;min-height:64px;border-radius:16px;background:#fff;color:var(--accent);font-size:22px;font-weight:800}
+.adj-btn{min-height:48px;border-radius:12px;border:1px solid rgba(255,255,255,.5);color:#fff;font-weight:600}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{min-height:48px;padding:0 16px;border-radius:24px;background:var(--surface);border:1px solid var(--line);font-weight:600}
+.chip.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.chip.off{color:var(--muted);text-decoration:line-through}
+.gl.ia{gap:8px}
+.gl.ia li{display:block}
+.today .exl li .badge.new{color:var(--accent)}
+.gitem .badge{align-self:flex-start}
+.gl.ia li .how{white-space:normal;color:var(--muted)}
+#sheet .pick{padding-block:10px}
+.gitem.static{background:transparent}
+.gitem b{font-weight:600}
+.gitem{width:100%;display:flex;justify-content:space-between;align-items:flex-start;gap:12px;min-height:60px;padding:12px 14px;border-radius:14px;background:var(--surface);border:1px solid var(--line);text-align:left}
+.gitem .gn{display:flex;flex-direction:column;gap:4px;min-width:0}
+.gitem .num{color:var(--muted);white-space:nowrap}
+.how{font-size:14px;color:var(--muted);font-weight:400}
+.howbox{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:0 14px;margin-top:4px}
+.howbox summary{min-height:48px;display:flex;align-items:center;font-weight:600;color:var(--warn)}
+.howbox p{margin:0 0 12px;font-size:16px;line-height:1.4}
