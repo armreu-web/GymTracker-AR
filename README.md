@@ -21,8 +21,18 @@ Einfacher Gym-Tracker fürs iPhone als Web-App (PWA). Handy liegt neben dem Ger�
 - Bildschirm bleibt an (Wake Lock), Stand übersteht Sperren und Neuladen
 - Sicherung als Datei
 
+## Workout-Generator (ab 0.5)
+- Startscreen schlägt ein Training vor: der Schwerpunkt, der am längsten her ist (Rücken, Beine & Hüfte, Stabilität & Rumpf, Ganzkörper; feste Pläne zählen als Ganzkörper)
+- Rund 7–8 Übungen à 3 Sätze plus 10 min Cardio, endet immer mit 2 Rumpfübungen; Rücken- und Beintag haben je einen Drück-Slot
+- Bis zu 3 neue Übungen pro Workout mit kurzer Anleitung, Startgewicht bewusst leicht
+- Annehmen, einzelne Übung tauschen oder weglassen, neu würfeln oder anderen Schwerpunkt wählen
+- Gewicht: wie letztes Mal, +1 Schritt wenn alle Ziel-Wdh. geschafft; Kreuzheben max. +2,5 kg und nie über die Obergrenze
+- Nie Übungen mit hoher Last auf dem unteren Rücken (Kreuzheben ist die bewusste Ausnahme)
+- Geräte lassen sich unter ⚙︎ ausschließen; dort lässt sich der Generator auch abschalten (dann wie bisher Plan-Rotation)
+- Regeln und Übungskatalog: `generator.js`
+
 ## Noch nicht drin
-Strava-Upload, Puls, Workout-Generator (siehe Spezifikation).
+Puls (siehe Spezifikation).
 
 ## Technik
-Statisches HTML/CSS/JS ohne Build-Schritt, Daten im `localStorage` des Geräts, Service Worker für Offline. Neue Version ausrollen: `VERSION` in `app.js` und `CACHE` in `sw.js` hochzählen.
+Statisches HTML/CSS/JS ohne Build-Schritt (`generator.js` = Katalog + Regeln), Daten im `localStorage` des Geräts, Service Worker für Offline. Neue Version ausrollen: `VERSION` in `app.js` und `CACHE` in `sw.js` hochzählen.
