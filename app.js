@@ -1,7 +1,7 @@
 (function(){
 'use strict';
 const KEY='gymtracker.v1';
-const VERSION='0.3.2';
+const VERSION='0.4.0';
 
 /* ---------------- state ---------------- */
 let S=null;
@@ -12,6 +12,20 @@ if(!S||!S.exercises||!Array.isArray(S.plans)) S=window.GT_SEED();
   Object.values(S.exercises).forEach(e=>{ const v=e.strava||''; if(!v||/^[A-Z0-9_]+$/.test(v)) return;
     e.strava=seed[e.id]&&seed[e.id].strava||v.toUpperCase().replace(/[^A-Z0-9]+/g,'_').replace(/^_|_$/g,''); ch=true; });
   if(ch) save();
+})();
+// Migration 0.4: die zwei „Unbekannt“-Übungen sind geklärt (Armin, 22.11.): in seinen eigenen Trainings und Plan B
+// war Unbekannt 1 = Rudern brustgestützt, Unbekannt 2 = Seitheben; in den Strava-Startdaten genau umgekehrt.
+(function(){
+  const u1=S.exercises.u1, u2=S.exercises.u2;
+  if(!u1&&!u2) return;
+  const auto=e=>e&&/^Unbekannt/.test(e.name);
+  if(!auto(u1)||!auto(u2)) return; // schon selbst umbenannt: nichts anfassen
+  if(!S.exercises.latraise) S.exercises.latraise={id:'latraise',name:'Seitheben KH',type:'weight',strava:'LATERAL_RAISE_GENERIC',step:2.5,rest:60};
+  const own={u1:'row',u2:'latraise'}, fromStrava={u1:'latraise',u2:'row'};
+  S.plans.forEach(p=>p.items.forEach(i=>{ if(own[i.ex]) i.ex=own[i.ex]; }));
+  S.history.forEach(h=>{ const m=h.source==='strava'?fromStrava:own; h.ex.forEach(e=>{ if(m[e.ex]) e.ex=m[e.ex]; }); });
+  if(S.active) S.active.ex.forEach(e=>{ if(own[e.ex]) e.ex=own[e.ex]; });
+  delete S.exercises.u1; delete S.exercises.u2; save();
 })();
 function save(){ try{ localStorage.setItem(KEY,JSON.stringify(S)); }catch(e){ toast('Speichern fehlgeschlagen'); } }
 try{ navigator.storage&&navigator.storage.persist&&navigator.storage.persist(); }catch(e){}
