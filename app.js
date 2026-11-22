@@ -1,7 +1,7 @@
 (function(){
 'use strict';
 const KEY='gymtracker.v1';
-const VERSION='0.1.0';
+const VERSION='0.2.0';
 
 /* ---------------- state ---------------- */
 let S=null;
@@ -49,6 +49,19 @@ function activePlans(){ return S.plans.filter(p=>!p.archived); }
 function nextPlan(){ return activePlans().slice().sort((a,b)=>planLastUsed(a.id)-planLastUsed(b.id))[0]||null; }
 function clampCap(e,w){ const c=EX(e).cap; return (c>0&&w>c)?c:w; }
 
+// Zielgewicht einer Plan-Übung: manuell gesetzt (it.weight) oder letzter Satz aus dem letzten Training
+function targetW(it,before){
+  const e=EX(it.ex); if(e.type==='time') return null;
+  if(it.weight!=null&&it.weight!=='') return clampCap(it.ex,+it.weight);
+  const l=lastSets(it.ex,before); const ws=l?l.sets.filter(s=>s.w!=null):[];
+  return clampCap(it.ex, ws.length?ws[ws.length-1].w:(e.type==='bodyweight'?0:20));
+}
+function targetStr(it,before){
+  const e=EX(it.ex);
+  if(e.type==='time') return it.sets+' × '+mmss(it.secs||30);
+  const w=targetW(it,before);
+  return it.sets+' × '+(it.reps||10)+(e.type==='bodyweight'?(w?' · +'+fw(w)+' kg':' · Eigengew.'):' · '+fw(w)+' kg');
+}
 function suggest(it){
   const e=EX(it.ex), idx=it.done.length;
   if(e.type==='time'){
@@ -57,12 +70,7 @@ function suggest(it){
   }
   let w, r=it.reps||0;
   const own=it.done.filter(x=>x.w!=null);
-  if(own.length) w=own[own.length-1].w;
-  else{
-    const l=lastSets(it.ex,A()&&A().start);
-    if(l){ const s=l.sets[Math.min(idx,l.sets.length-1)]; w=s.w||0; if(!r) r=s.r; }
-    else w=e.type==='bodyweight'?0:20;
-  }
+  w=own.length?own[own.length-1].w:targetW(it,A()&&A().start);
   if(!r) r=10;
   return {w:clampCap(it.ex,w),r};
 }
@@ -110,7 +118,7 @@ function toast(msg,undo){
 function startWorkout(plan){
   const items=plan?plan.items:[];
   S.active={plan:plan?plan.id:null,name:plan?plan.name:'Freies Training',start:Date.now(),cur:0,rest:null,clock:null,
-    ex:items.map(i=>({ex:i.ex,sets:i.sets,reps:i.reps,secs:i.secs,done:[],skipped:false,draft:null}))};
+    ex:items.map(i=>({ex:i.ex,sets:i.sets,reps:i.reps,secs:i.secs,weight:i.weight,done:[],skipped:false,draft:null}))};
   view='home'; sheet=S.active.ex.length?null:'swap'; sheetArg='add';
   save(); lockScreen(); render();
 }
@@ -151,6 +159,8 @@ function finishWorkout(){
   unlockScreen();
   if(!ex.length){ S.active=null; sheet=null; save(); render(); toast('Leeres Training verworfen'); return; }
   const w={id:uid('w'),plan:a.plan,name:a.name,start:a.start,end:Date.now(),ex,sync:'offen'};
+  // manuelles Zielgewicht gilt bis zum nächsten Training dieser Übung, danach zählt das echte Gewicht
+  const pl=S.plans.find(p=>p.id===a.plan); if(pl) pl.items.forEach(i=>{ if(ex.some(x=>x.ex===i.ex)) delete i.weight; });
   S.history.push(w); S.active=null; sheet='summary'; sheetArg=w.id; save(); render();
 }
 function stats(w){
@@ -179,12 +189,13 @@ function vHome(){
   const np=nextPlan(), others=activePlans().filter(p=>p!==np);
   const hist=S.history.slice().reverse().slice(0,6);
   const planLine=p=>p.items.map(i=>EX(i.ex).name).join(', ');
+  const planList=p=>`<ul class="exl">${p.items.map(i=>`<li><span>${esc(EX(i.ex).name)}</span><span class="num">${esc(targetStr(i))}</span></li>`).join('')}</ul>`;
   return `
   <header class="home-h pad"><h1>Gym<span>Tracker</span></h1><button class="btn sm ghost" data-a="go" data-v="settings" aria-label="Einstellungen">⚙︎</button></header>
   <main class="scroll pad">
     ${np?`<button class="today" data-a="start" data-id="${esc(np.id)}">
       <span class="lbl">Heute dran</span><h2>${esc(np.name)}</h2>
-      <p>${esc(planLine(np))}</p>
+      ${planList(np)}
       <span class="go">▶ Training starten</span></button>`:`<div class="card"><b>Kein aktiver Plan</b><p class="note">Leg unter „Pläne“ einen an.</p></div>`}
     ${others.length?`<section class="sect"><h3>Oder stattdessen</h3><div class="list">${others.map(p=>`<button class="card" data-a="start" data-id="${esc(p.id)}"><div class="row"><b>${esc(p.name)}</b><span class="muted">▶</span></div><span class="note">${esc(planLine(p))}</span></button>`).join('')}</div></section>`:''}
     <div class="links"><button class="btn" data-a="go" data-v="plans">Pläne</button><button class="btn" data-a="start-free">Ohne Plan</button></div>
@@ -234,7 +245,7 @@ function vWorkout(){
   return head+`
   <main class="scroll pad">
     <section class="ex-h"><h2>${esc(e.name)}</h2>
-      <span class="sub">Satz <b class="num">${Math.min(idx+1,n)}</b> von <b class="num">${n}</b>${itemDone(it)&&!it.skipped?' · <span style="color:var(--good)">fertig</span>':''}${it.skipped?' · übersprungen':''}</span>
+      <span class="sub">Satz <b class="num">${Math.min(idx+1,n)}</b> von <b class="num">${n}</b> · Vorgabe <b class="num">${esc(targetStr(it,a.start))}</b>${itemDone(it)&&!it.skipped?' · <span style="color:var(--good)">fertig</span>':''}${it.skipped?' · übersprungen':''}</span>
       ${e.note?`<p class="ex-note">${esc(e.note)}</p>`:''}</section>
     ${big}
     <div class="setdots">${dots.join('')}</div>
@@ -263,7 +274,7 @@ function vPlanEdit(){
   <main class="scroll pad">
     <label class="field"><span>Name</span><input class="inp" data-f="plan.name" value="${esc(p.name)}"></label>
     <section class="sect"><h3>Übungen</h3><div class="list">
-    ${p.items.map((i,k)=>{const e=EX(i.ex);return `<div class="item"><button style="text-align:left" data-a="edit-item" data-i="${k}"><b>${esc(e.name)}</b><div class="meta">${i.sets} × ${e.type==='time'?mmss(i.secs):i.reps+' Wdh.'} · Pause ${mmss(e.rest)}${e.cap?' · max '+fw(e.cap)+' kg':''} ›</div></button>
+    ${p.items.map((i,k)=>{const e=EX(i.ex);return `<div class="item"><button style="text-align:left" data-a="edit-item" data-i="${k}"><b>${esc(e.name)}</b><div class="meta">${esc(targetStr(i))}${i.weight!=null&&e.type!=='time'?' (fest)':''} · Pause ${mmss(e.rest)}${e.cap?' · max '+fw(e.cap)+' kg':''} ›</div></button>
       <div class="ord"><button class="btn" data-a="mv" data-i="${k}" data-d="-1" aria-label="nach oben" ${k===0?'disabled':''}>↑</button><button class="btn" data-a="mv" data-i="${k}" data-d="1" aria-label="nach unten" ${k===p.items.length-1?'disabled':''}>↓</button></div></div>`}).join('')}
     </div><button class="btn block" data-a="sheet" data-v="swap" data-arg="plan">+ Übung hinzufügen</button></section>
     <div class="grid2">
@@ -285,6 +296,8 @@ function vItemEdit(){
       ${e.type==='time'?`<label class="field"><span>Sekunden</span><input class="inp num" inputmode="numeric" data-f="item.secs" value="${i.secs}"></label>`
         :`<label class="field"><span>Ziel-Wdh.</span><input class="inp num" inputmode="numeric" data-f="item.reps" value="${i.reps}"></label>`}
     </div>
+    ${e.type!=='time'?`<label class="field"><span>Zielgewicht kg${e.type==='bodyweight'?' (Zusatz)':''}</span><input class="inp num" inputmode="decimal" data-f="item.weight" value="${i.weight!=null?fw(i.weight):''}" placeholder="vom letzten Training: ${fw(targetW({...i,weight:null}))}"></label>
+    <p class="note">Leer lassen = Gewicht aus deinem letzten Training. Ein fester Wert gilt bis zum nächsten Training dieser Übung.</p>`:''}
     <div class="field"><span>Pause nach jedem Satz</span>${seg('ex.rest',e.rest,[[30,'0:30'],[45,'0:45'],[60,'1:00'],[90,'1:30'],[120,'2:00']])}</div>
     ${e.type!=='time'?`<div class="field"><span>Gewichtsschritt</span>${seg('ex.step',e.step,[[1,'1 kg'],[2.5,'2,5 kg'],[5,'5 kg']])}</div>
     <label class="field"><span>Obergrenze kg (leer = keine)</span><input class="inp num" inputmode="decimal" data-f="ex.cap" value="${e.cap?fw(e.cap):''}" placeholder="z. B. 50"></label>`:''}
@@ -322,7 +335,7 @@ function vSheet(){
   const wrap=(title,body,label)=>`<div class="backdrop" data-a="close-bg"><div class="sheet pad" role="dialog" aria-label="${esc(label||title)}"><div class="sheet-h"><h2>${esc(title)}</h2><button class="btn icon" data-a="close" aria-label="Schließen">✕</button></div>${body}</div></div>`;
   if(sheet==='exlist'&&a){
     const it=curItem();
-    return wrap('Übungen',`<div class="list">${a.ex.map((x,i)=>{const e=EX(x.ex);return `<button class="pick${i===a.cur?' on':''}${itemDone(x)&&!x.skipped?' okd':''}" data-a="goto" data-i="${i}"><b>${esc(e.name)}</b><span class="r num">${x.skipped?'übersprungen':x.done.length+'/'+x.sets+(itemDone(x)?' ✓':'')}</span></button>`}).join('')}</div>
+    return wrap('Übungen',`<div class="list">${a.ex.map((x,i)=>{const e=EX(x.ex);return `<button class="pick${i===a.cur?' on':''}${itemDone(x)&&!x.skipped?' okd':''}" data-a="goto" data-i="${i}"><span><b>${esc(e.name)}</b><br><span class="note num">${esc(targetStr(x,a.start))}</span></span><span class="r num">${x.skipped?'übersprungen':x.done.length+'/'+x.sets+(itemDone(x)?' ✓':'')}</span></button>`}).join('')}</div>
       ${it?`<h3 class="lbl">Aktuelle Übung: ${esc(EX(it.ex).name)}</h3>
       <div class="grid3"><button class="btn sm" data-a="add-set">+ Satz</button><button class="btn sm" data-a="skip">Überspringen</button><button class="btn sm" data-a="sheet" data-v="swap" data-arg="swap">Tauschen</button></div>`:''}
       <button class="btn block" data-a="sheet" data-v="swap" data-arg="add">+ Übung hinzufügen</button>`);
@@ -476,6 +489,7 @@ function setField(f,v){
   const p=S.plans.find(x=>x.id===editPlan); const it=p&&p.items[editItem];
   const [o,k]=f.split('.');
   if(o==='plan'&&p){ p.name=v.trim()||p.name; }
+  else if(f==='item.weight'&&it){ const w=parseFloat(String(v).replace(',','.')); if(String(v).trim()===''||!isFinite(w)) delete it.weight; else it.weight=clampCap(it.ex,Math.max(0,Math.round(w*100)/100)); }
   else if(o==='item'&&it){ const n=parseInt(v,10); if(isFinite(n)&&n>=0) it[k]=k==='sets'?Math.max(1,n):n; }
   else if(o==='ex'&&it){
     const e=EX(it.ex);
