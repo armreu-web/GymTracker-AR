@@ -1,7 +1,7 @@
 (function(){
 'use strict';
 const KEY='gymtracker.v1';
-const VERSION='0.6.0';
+const VERSION='0.6.1';
 const GEN=window.GTGen;
 
 /* ---------------- state ---------------- */
@@ -350,12 +350,22 @@ function vWorkout(){
     <p class="last">${l?'Letztes Mal ('+esc(dfmt(l.date))+'): <b class="num">'+esc(setsLine(it.ex,l.sets))+'</b>':'Noch keine Vorwerte'}</p>
   </main>
   <footer class="dock pad">
+    ${upNext(it,idx,n)}
     <button class="btn icon" data-a="prev" aria-label="Vorherige Übung" ${a.cur===0?'disabled':''}>‹</button>
     ${mainBtn}
     <button class="btn icon" data-a="next" aria-label="Nächste Übung" ${a.cur>=a.ex.length-1?'disabled':''}>›</button>
   </footer>`;
 }
 
+// Beim letzten Satz schon die nächste Übung zeigen, damit man rechtzeitig zum Gerät kann
+function upNext(it,idx,n){
+  if(it.skipped||idx!==n-1) return '';
+  const a=A(); let ni=-1;
+  for(let k=1;k<a.ex.length;k++){ const i=(a.cur+k)%a.ex.length; if(!itemDone(a.ex[i])){ ni=i; break; } }
+  if(ni<0) return `<div class="upnext"><span class="lbl">Danach</span><b>Fertig, nur noch speichern 💪</b></div>`;
+  const nt=nextText(ni);
+  return `<div class="upnext"><span class="lbl">Danach</span><b>${esc(nt.name)}</b><span class="num">${esc(nt.val)}</span></div>`;
+}
 function vPlans(){
   const act=S.plans.filter(p=>!p.archived), arc=S.plans.filter(p=>p.archived);
   const card=p=>`<button class="card" data-a="edit-plan" data-id="${esc(p.id)}"><div class="row"><b>${esc(p.name)}</b><span class="muted">›</span></div><span class="note">${p.items.length} Übungen · ${esc(p.items.map(i=>EX(i.ex).name).join(', '))}</span></button>`;

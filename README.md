@@ -18,6 +18,7 @@ Einfacher Gym-Tracker fürs iPhone als Web-App (PWA). Handy liegt neben dem Ger�
 - Pause startet automatisch (Standard 1:00, pro Übung einstellbar), Ton am Ende, +30 s / −15 s / Weiter
 - Kreuzheben-Obergrenze (Start 50 kg): App schlägt nie mehr vor und lässt nicht höher stellen
 - Überspringen, Satz anhängen, Übung tauschen oder hinzufügen, Rückgängig für 5 s
+- Beim letzten Satz einer Übung steht unten schon die nächste Übung mit Gewicht
 - Bildschirm bleibt an (Wake Lock), Stand übersteht Sperren und Neuladen
 - Sicherung als Datei
 
