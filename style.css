@@ -176,3 +176,4 @@ select.inp{appearance:none;-webkit-appearance:none}
 .upnext .lbl{flex:none;color:var(--accent)}
 .upnext b{font-size:19px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .upnext .num{margin-left:auto;flex:none;font-size:19px;color:var(--muted);font-weight:700}
+.ex-h .sub b.side{color:var(--accent);text-transform:uppercase;letter-spacing:.04em}
