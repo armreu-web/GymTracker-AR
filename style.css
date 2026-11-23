@@ -172,3 +172,7 @@ select.inp{appearance:none;-webkit-appearance:none}
 .howbox{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:0 14px;margin-top:4px}
 .howbox summary{min-height:48px;display:flex;align-items:center;font-weight:600;color:var(--warn)}
 .howbox p{margin:0 0 12px;font-size:16px;line-height:1.4}
+.upnext{grid-column:1/-1;display:flex;align-items:baseline;gap:10px;min-width:0;padding:2px 4px 0}
+.upnext .lbl{flex:none;color:var(--accent)}
+.upnext b{font-size:19px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.upnext .num{margin-left:auto;flex:none;font-size:19px;color:var(--muted);font-weight:700}
