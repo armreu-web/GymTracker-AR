@@ -64,6 +64,7 @@ function build(w,exOf){
   w.ex.forEach(e=>{
     const x=exOf(e.ex); const t=(x.strava||'').trim().toUpperCase();
     lines.push(x.name+': '+e.sets.map(s=>s.s!=null?s.s+' s':(s.w?(+s.w).toLocaleString('de-DE')+' kg × ':'')+s.r).join(', '));
+    if(x.stretch) return; // Dehnen: nur in der Beschreibung, kein Kraftsatz
     if(!t){ missing.push(x.name); return; }
     e.sets.forEach(s=>{
       const o={exercise_type:t};

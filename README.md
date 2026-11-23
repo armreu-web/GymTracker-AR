@@ -23,7 +23,7 @@ Einfacher Gym-Tracker fürs iPhone als Web-App (PWA). Handy liegt neben dem Ger�
 
 ## Workout-Generator (ab 0.5)
 - Startscreen schlägt ein Training vor: der Schwerpunkt, der am längsten her ist (Rücken, Beine & Hüfte, Stabilität & Rumpf, Ganzkörper; feste Pläne zählen als Ganzkörper)
-- Rund 7–8 Übungen à 3 Sätze plus 10 min Cardio, endet immer mit 2 Rumpfübungen; Rücken- und Beintag haben je einen Drück-Slot
+- 7 Übungen à 3 Sätze plus 10 min Cardio, dann 2 Rumpfübungen und 3 Dehnübungen passend zum Schwerpunkt (je 2 × 30 s, gehen nur als Text nach Strava); Rücken- und Beintag haben je einen Drück-Slot
 - Bis zu 3 neue Übungen pro Workout mit kurzer Anleitung, Startgewicht bewusst leicht
 - Annehmen, einzelne Übung tauschen oder weglassen, neu würfeln oder anderen Schwerpunkt wählen
 - Gewicht: wie letztes Mal, +1 Schritt wenn alle Ziel-Wdh. geschafft; Kreuzheben max. +2,5 kg und nie über die Obergrenze

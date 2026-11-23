@@ -71,6 +71,19 @@ const CAT={};
   C('sideleg','Seitstütz mit Beinheben','bodyweight','SIDE_PLANK_LEG_RAISE',{pats:['lat','balance'],reps:10,rest:45,note:'Wdh. pro Seite.',how:'Seitstütz halten und das obere Bein langsam heben und senken. Hüfte bleibt oben.'}),
   C('revcr','Umgekehrter Crunch','bodyweight','REVERSE_CRUNCH',{pats:['flex'],reps:12,rest:45,how:'Rückenlage, Knie zur Brust rollen, Becken hebt leicht ab. Langsam ablassen, kein Schwung.'}),
   C('hkr','Knieheben hängend','bodyweight','HANGING_KNEE_RAISE',{pats:['flex'],eq:['bar'],reps:10,rest:45,how:'An der Stange hängen, Knie kontrolliert zur Brust ziehen, langsam runter. Nicht schaukeln.'}),
+
+  // ---- Dehnen zum Abschluss (Armin, 23.11.): Zeit pro Seite, alles im Liegen/Knien oder Stehen, keine Vorbeuge im Sitzen ----
+  // Kein Strava-exercise_type: landet beim Upload nur als Text in der Beschreibung, nicht als Kraftsatz.
+  ...[
+    ['st_hipflex','Hüftbeuger-Dehnung im Halbknien','Ein Knie am Boden (Polster drunter), Po anspannen und Becken leicht nach vorne schieben, bis es vorne an der Hüfte zieht. Kein Hohlkreuz. Entlastet den unteren Rücken.'],
+    ['st_glute','Gesäß-Dehnung in Rückenlage (Figur 4)','Rückenlage, einen Knöchel aufs andere Knie legen und das untere Bein sanft zur Brust ziehen. Kopf und Rücken bleiben am Boden.'],
+    ['st_ham','Beinbeuger-Dehnung mit Handtuch','Rückenlage, Handtuch oder Band um den Fuß, gestrecktes Bein langsam anheben, bis es hinten am Oberschenkel zieht. Das andere Bein bleibt am Boden.'],
+    ['st_quad','Oberschenkel-Dehnung seitlich liegend','Auf der Seite liegen, oberen Fuß greifen und Ferse zum Po ziehen. Knie bleiben zusammen, Hüfte leicht nach vorne.'],
+    ['st_calf','Waden-Dehnung an der Wand','Hände an die Wand, ein Bein gestreckt nach hinten, Ferse bleibt am Boden. Hüfte nach vorne schieben.'],
+    ['st_lat','Lat-Dehnung am Gerät','Mit einer Hand an einer Stange oder einem Gerät festhalten, Hüfte nach hinten-seitlich schieben, bis es seitlich am Rücken zieht. Rücken lang, nicht rund.'],
+    ['st_chest','Brust-Dehnung am Türrahmen','Unterarm an Rahmen oder Gerätepfosten, Ellbogen auf Schulterhöhe, Oberkörper langsam wegdrehen, bis es in der Brust zieht.'],
+    ['st_child','Kindhaltung','Kniend, Po zu den Fersen, Arme weit nach vorne strecken und ruhig in den Rücken atmen. Bei Druck im unteren Rücken die Knie weiter öffnen.'],
+  ].map(([id,name,how])=>C(id,name,'time','',{pats:[id],secs:30,sets:2,rest:10,step:5,stretch:true,note:'2 × 30 s = je Seite einmal (bei Kindhaltung einfach zweimal).',how})),
 ].forEach(e=>CAT[e.id]=e);
 CAT.cardio={id:'cardio',name:'Cardio Aufwärmen',type:'time',strava:'CARDIO_GENERIC',step:0,rest:30,sets:1,secs:600,pats:[],eq:[],lws:'low'};
 
@@ -90,6 +103,16 @@ const TPL={
 };
 const CORE=[['antiext','flex'],['lat','antirot']];
 const MAX_NEW=3;
+// Dehnen zum Abschluss: 3 Slots je Schwerpunkt
+const STRETCH={
+  ruecken:[['st_lat'],['st_chest'],['st_hipflex','st_glute','st_child']],
+  beine:[['st_hipflex'],['st_ham','st_quad'],['st_glute','st_calf']],
+  stabi:[['st_hipflex'],['st_glute','st_child'],['st_lat','st_chest']],
+  ganz:[['st_hipflex'],['st_ham','st_glute'],['st_lat','st_chest']],
+};
+const isStretchSlot=pats=>pats.every(p=>/^st_/.test(p));
+const allSlots=focus=>(TPL[focus]||TPL.ganz).concat(CORE,STRETCH[focus]||STRETCH.ganz);
+const V=2; // Version des gespeicherten Vorschlags: höher = alte Vorschläge werden neu erzeugt
 const DAY=86400000;
 
 const focusName=id=>(FOCI.find(f=>f.id===id)||{name:'Training'}).name;
@@ -145,15 +168,17 @@ function candidates(S,pats,usedIds){
 
 function generate(S,focus,now){
   now=now||Date.now();
-  const slots=(TPL[focus]||TPL.ganz).concat(CORE);
+  const slots=allSlots(focus);
   const items=[], used=[]; let fresh=0;
   const cardioPP=planPrefs(S,'cardio');
   items.push({ex:'cardio',sets:1,reps:0,secs:Math.max(600,cardioPP?cardioPP.secs:600),isNew:false,slot:-1});
   const pick=new Array(slots.length).fill(null);
   const choose=(si,onlyNew)=>{
     const c=candidates(S,slots[si],used);
+    const st=isStretchSlot(slots[si]);
     const pool=c.filter(x=>!onlyNew||x.isNew).map(x=>{
       let w;
+      if(st) return {e:x.e,w:1,isNew:false};                  // Dehnen zählt nicht als „neue Übung“
       if(x.isNew) w=fresh<MAX_NEW?1.2:0;                     // neue Übungen: willkommen, aber max. 3
       else{ w=3; const ago=(now-x.last)/DAY; if(ago<3) w=0.8; else if(ago<6) w=1.8; }  // Kürzliches darf ruhen
       return {e:x.e,w,isNew:x.isNew};
@@ -165,21 +190,21 @@ function generate(S,focus,now){
     used.push(e.id); pick[si]=makeItem(S,e,isNew,si);
   };
   // 1. Slots, für die du noch keine passende Übung kennst, bekommen zuerst das Kontingent für neue
-  slots.forEach((pats,si)=>{ if(!candidates(S,pats,used).some(x=>!x.isNew)) choose(si,true); });
+  slots.forEach((pats,si)=>{ if(!isStretchSlot(pats)&&!candidates(S,pats,used).some(x=>!x.isNew)) choose(si,true); });
   // 2. Rest normal füllen
   slots.forEach((pats,si)=>{ if(!pick[si]) choose(si,false); });
   pick.forEach(it=>{ if(it) items.push(it); });
-  return {v:1,focus,created:now,items};
+  return {v:V,focus,created:now,items};
 }
-function slotPats(focus,si){ const s=(TPL[focus]||TPL.ganz).concat(CORE); return s[si]||[]; }
+function slotPats(focus,si){ return allSlots(focus)[si]||[]; }
 
 // grobe Dauer: Arbeit + Pause + Einstellen pro Satz, 1,5 min Wechsel pro Übung (an deinen Strava-Einheiten geeicht)
 function estimate(S,items){
   let sec=0;
   items.forEach(it=>{ const e=info(S,it.ex)||{}; const work=e.type==='time'?(it.secs||40):Math.max(30,(it.reps||10)*3.5);
-    sec+=it.ex==='cardio'?it.secs+60:it.sets*(work+(e.rest||60)+30)+90; });
+    sec+=it.ex==='cardio'?it.secs+60:e.stretch?it.sets*(work+(e.rest||10)+5)+30:it.sets*(work+(e.rest||60)+30)+90; });
   return Math.round(sec/60/5)*5;
 }
 
-return {CAT,FOCI,EQUIP,TPL,CORE,MAX_NEW,focusName,focusOf,lastByFocus,suggestFocus,weekCount,info,candidates,generate,slotPats,makeItem,estimate,targetWeight,known};
+return {V,STRETCH,CAT,FOCI,EQUIP,TPL,CORE,MAX_NEW,focusName,focusOf,lastByFocus,suggestFocus,weekCount,info,candidates,generate,slotPats,makeItem,estimate,targetWeight,known};
 })();
