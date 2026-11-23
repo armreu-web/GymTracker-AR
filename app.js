@@ -1,7 +1,7 @@
 (function(){
 'use strict';
 const KEY='gymtracker.v1';
-const VERSION='0.5.1';
+const VERSION='0.6.0';
 const GEN=window.GTGen;
 
 /* ---------------- state ---------------- */
@@ -155,7 +155,7 @@ function startWorkout(plan){
 function ensureGen(){
   const g=S.gen;
   // gespeicherter Vorschlag fliegt auch raus, wenn eine Übung inzwischen nicht mehr im Katalog ist (z. B. Seal Row)
-  if(g&&g.v===1&&!S.history.some(h=>h.start>=g.created)&&g.items.every(i=>GEN.CAT[i.ex])) return g;
+  if(g&&g.v===GEN.V&&!S.history.some(h=>h.start>=g.created)&&g.items.every(i=>GEN.CAT[i.ex])) return g;
   S.gen=GEN.generate(S,GEN.suggestFocus(S)); save(); return S.gen;
 }
 function regen(focus){ S.gen=GEN.generate(S,focus||S.gen.focus); save(); }
@@ -166,7 +166,7 @@ function startGen(){
   startWorkout({id:'gen:'+g.focus,name:GEN.focusName(g.focus),focus:g.focus,items:g.items});
 }
 function adoptEx(id){ if(S.exercises[id]||!GEN.CAT[id]) return; const c=GEN.CAT[id];
-  const e={id:c.id,name:c.name,type:c.type,strava:c.strava,step:c.step,rest:c.rest}; if(c.cap) e.cap=c.cap; if(c.note) e.note=c.note; S.exercises[c.id]=e; }
+  const e={id:c.id,name:c.name,type:c.type,strava:c.strava,step:c.step,rest:c.rest}; if(c.cap) e.cap=c.cap; if(c.note) e.note=c.note; if(c.stretch) e.stretch=true; S.exercises[c.id]=e; }
 function genNewCount(g){ return g.items.filter(i=>i.isNew).length; }
 
 function itemDone(it){ return it.skipped||it.done.length>=it.sets; }
@@ -344,7 +344,7 @@ function vWorkout(){
     <section class="ex-h"><h2>${esc(e.name)}</h2>
       <span class="sub">Satz <b class="num">${Math.min(idx+1,n)}</b> von <b class="num">${n}</b> · Vorgabe <b class="num">${esc(targetStr(it,a.start))}</b>${itemDone(it)&&!it.skipped?' · <span style="color:var(--good)">fertig</span>':''}${it.skipped?' · übersprungen':''}</span>
       ${e.note?`<p class="ex-note">${esc(e.note)}</p>`:''}
-      ${it.isNew&&GEN.CAT[it.ex]&&GEN.CAT[it.ex].how?`<details class="howbox"><summary>Neu für dich · So geht's</summary><p>${esc(GEN.CAT[it.ex].how)}</p></details>`:''}</section>
+      ${(it.isNew||e.stretch)&&GEN.CAT[it.ex]&&GEN.CAT[it.ex].how?`<details class="howbox"><summary>${e.stretch?'Dehnen':'Neu für dich'} · So geht's</summary><p>${esc(GEN.CAT[it.ex].how)}</p></details>`:''}</section>
     ${big}
     <div class="setdots">${dots.join('')}</div>
     <p class="last">${l?'Letztes Mal ('+esc(dfmt(l.date))+'): <b class="num">'+esc(setsLine(it.ex,l.sets))+'</b>':'Noch keine Vorwerte'}</p>
