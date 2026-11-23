@@ -1,7 +1,7 @@
 (function(){
 'use strict';
 const KEY='gymtracker.v1';
-const VERSION='0.6.1';
+const VERSION='0.6.2';
 const GEN=window.GTGen;
 
 /* ---------------- state ---------------- */
@@ -82,11 +82,15 @@ function targetW(it,before){
   const l=lastSets(it.ex,before); const ws=l?l.sets.filter(s=>s.w!=null):[];
   return clampCap(it.ex, ws.length?ws[ws.length-1].w:(e.type==='bodyweight'?0:20));
 }
+// Einarmig/einbeinig: Sätze gelten pro Seite, im Training wird verdoppelt (links, rechts, links, …)
+function isSide(id){ const o=S.exercises[id]; if(o&&o.side!=null) return !!o.side; return !!(GEN.CAT[id]&&GEN.CAT[id].side); }
+const sideOf=i=>i%2===0?'links':'rechts';
 function targetStr(it,before){
   const e=EX(it.ex);
-  if(e.type==='time') return it.sets+' × '+mmss(it.secs||30);
+  const sd=it.sides!=null?it.sides:isSide(it.ex), per=it.sides?Math.ceil(it.sets/2):it.sets, js=sd?' je Seite':'';
+  if(e.type==='time') return per+' × '+mmss(it.secs||30)+js;
   const w=targetW(it,before);
-  return it.sets+' × '+(it.reps||10)+(e.type==='bodyweight'?(w?' · +'+fw(w)+' kg':' · Eigengew.'):' · '+fw(w)+' kg');
+  return per+' × '+(it.reps||10)+js+(e.type==='bodyweight'?(w?' · +'+fw(w)+' kg':' · Eigengew.'):' · '+fw(w)+' kg');
 }
 function suggest(it){
   const e=EX(it.ex), idx=it.done.length;
@@ -146,7 +150,7 @@ function toast(msg,undo){
 function startWorkout(plan){
   const items=plan?plan.items:[];
   S.active={plan:plan?plan.id:null,name:plan?plan.name:'Freies Training',focus:plan&&plan.focus||null,start:Date.now(),cur:0,rest:null,clock:null,
-    ex:items.map(i=>({ex:i.ex,sets:i.sets,reps:i.reps,secs:i.secs,weight:i.weight,isNew:!!i.isNew,done:[],skipped:false,draft:null}))};
+    ex:items.map(i=>{ const sd=isSide(i.ex); return {ex:i.ex,sets:sd?i.sets*2:i.sets,sides:sd,reps:i.reps,secs:i.secs,weight:i.weight,isNew:!!i.isNew,done:[],skipped:false,draft:null}; })};
   view='home'; sheet=S.active.ex.length?null:'swap'; sheetArg='add';
   save(); lockScreen(); render();
 }
@@ -166,7 +170,7 @@ function startGen(){
   startWorkout({id:'gen:'+g.focus,name:GEN.focusName(g.focus),focus:g.focus,items:g.items});
 }
 function adoptEx(id){ if(S.exercises[id]||!GEN.CAT[id]) return; const c=GEN.CAT[id];
-  const e={id:c.id,name:c.name,type:c.type,strava:c.strava,step:c.step,rest:c.rest}; if(c.cap) e.cap=c.cap; if(c.note) e.note=c.note; if(c.stretch) e.stretch=true; S.exercises[c.id]=e; }
+  const e={id:c.id,name:c.name,type:c.type,strava:c.strava,step:c.step,rest:c.rest}; if(c.cap) e.cap=c.cap; if(c.note) e.note=c.note; if(c.stretch) e.stretch=true; if(c.side) e.side=true; S.exercises[c.id]=e; }
 function genNewCount(g){ return g.items.filter(i=>i.isNew).length; }
 
 function itemDone(it){ return it.skipped||it.done.length>=it.sets; }
@@ -178,7 +182,7 @@ function findNext(from){
 function nextText(i){
   const a=A(); if(i<0) return null; const it=a.ex[i]; const e=EX(it.ex);
   const d=draft(it);
-  return {name:e.name, val: e.type==='time'?mmss(d.s):(e.type==='bodyweight'&&!d.w?d.r+' Wdh.':fw(d.w)+' kg × '+d.r), set:'Satz '+(it.done.length+1)+' von '+Math.max(it.sets,it.done.length+1)};
+  return {name:e.name+(it.sides?' · '+sideOf(it.done.length):''), val: e.type==='time'?mmss(d.s):(e.type==='bodyweight'&&!d.w?d.r+' Wdh.':fw(d.w)+' kg × '+d.r), set:'Satz '+(it.done.length+1)+' von '+Math.max(it.sets,it.done.length+1)};
 }
 function logSet(value){
   const a=A(), it=curItem(); if(!it) return;
@@ -191,7 +195,8 @@ function logSet(value){
   if(it.done.length>=it.sets){ nxt=findNext(a.cur); }
   if(nxt>=0){
     a.cur=nxt;
-    const sec=e.rest||60;
+    // nach der linken Seite nur kurz wechseln, Pause erst nach rechts
+    const sec=it.sides&&nxt===a.cur&&it.done.length%2===1?10:(e.rest||60);
     a.rest={end:Date.now()+sec*1000,total:sec*1000,beeped:false};
   } else a.rest=null;
   save(); render();
@@ -337,12 +342,13 @@ function vWorkout(){
   const dots=[];
   for(let i=0;i<n;i++){
     const s=it.done[i];
-    dots.push(s?`<span class="sd done"><i>✓</i>${esc(setStr(it.ex,s))}</span>`:`<span class="sd${i===idx?' next':''}"><i>${i+1}</i>${i===idx?'jetzt':''}</span>`);
+    const sl=it.sides?(sideOf(i)==='links'?'L':'R'):'';
+    dots.push(s?`<span class="sd done"><i>✓${sl}</i>${esc(setStr(it.ex,s))}</span>`:`<span class="sd${i===idx?' next':''}"><i>${sl||i+1}</i>${i===idx?'jetzt':''}</span>`);
   }
   return head+`
   <main class="scroll pad">
     <section class="ex-h"><h2>${esc(e.name)}</h2>
-      <span class="sub">Satz <b class="num">${Math.min(idx+1,n)}</b> von <b class="num">${n}</b> · Vorgabe <b class="num">${esc(targetStr(it,a.start))}</b>${itemDone(it)&&!it.skipped?' · <span style="color:var(--good)">fertig</span>':''}${it.skipped?' · übersprungen':''}</span>
+      <span class="sub">${it.sides&&idx<n?`<b class="side">${sideOf(idx)}</b> · `:''}Satz <b class="num">${Math.min(idx+1,n)}</b> von <b class="num">${n}</b> · Vorgabe <b class="num">${esc(targetStr(it,a.start))}</b>${itemDone(it)&&!it.skipped?' · <span style="color:var(--good)">fertig</span>':''}${it.skipped?' · übersprungen':''}</span>
       ${e.note?`<p class="ex-note">${esc(e.note)}</p>`:''}
       ${(it.isNew||e.stretch)&&GEN.CAT[it.ex]&&GEN.CAT[it.ex].how?`<details class="howbox"><summary>${e.stretch?'Dehnen':'Neu für dich'} · So geht's</summary><p>${esc(GEN.CAT[it.ex].how)}</p></details>`:''}</section>
     ${big}
@@ -406,6 +412,7 @@ function vItemEdit(){
     </div>
     ${e.type!=='time'?`<label class="field"><span>Zielgewicht kg${e.type==='bodyweight'?' (Zusatz)':''}</span><input class="inp num" inputmode="decimal" data-f="item.weight" value="${i.weight!=null?fw(i.weight):''}" placeholder="vom letzten Training: ${fw(targetW({...i,weight:null}))}"></label>
     <p class="note">Leer lassen = Gewicht aus deinem letzten Training. Ein fester Wert gilt bis zum nächsten Training dieser Übung.</p>`:''}
+    <div class="field"><span>Einarmig / einbeinig</span>${seg('ex.side',isSide(i.ex)?1:0,[[0,'Nein'],[1,'Ja, Sätze je Seite']])}</div>
     <div class="field"><span>Pause nach jedem Satz</span>${seg('ex.rest',e.rest,[[30,'0:30'],[45,'0:45'],[60,'1:00'],[90,'1:30'],[120,'2:00']])}</div>
     ${e.type!=='time'?`<div class="field"><span>Gewichtsschritt</span>${seg('ex.step',e.step,[[1,'1 kg'],[2.5,'2,5 kg'],[5,'5 kg']])}</div>
     <label class="field"><span>Obergrenze kg (leer = keine)</span><input class="inp num" inputmode="decimal" data-f="ex.cap" value="${e.cap?fw(e.cap):''}" placeholder="z. B. 50"></label>`:''}
@@ -607,7 +614,7 @@ document.addEventListener('click',ev=>{
     case 'log-target': logSet(); break;
     case 'clock-start': a.clock={start:Date.now(),beeped:false}; save(); render(); break;
     case 'clock-stop': { const sec=Math.round((Date.now()-a.clock.start)/1000); logSet(Math.max(1,sec)); break; }
-    case 'add-set': { const it=curItem(); it.sets++; it.skipped=false; sheet=null; save(); render(); toast('Satz angehängt'); break; }
+    case 'add-set': { const it=curItem(); it.sets+=it.sides?2:1; it.skipped=false; sheet=null; save(); render(); toast(it.sides?'Satz je Seite angehängt':'Satz angehängt'); break; }
     case 'skip': { const it=curItem(), from=a.cur; it.skipped=true; const n=findNext(a.cur); if(n>=0) a.cur=n; sheet=null; save(); render();
       toast('Übersprungen',()=>{ it.skipped=false; a.cur=from; save(); render(); }); if(n<0){ sheet='finish'; render(); } break; }
     case 'pick-ex': pickExercise(b.dataset.id); break;
@@ -686,6 +693,7 @@ function setField(f,v){
     if(k==='name') e.name=v.trim()||e.name;
     else if(k==='type'){ e.type=v; if(v==='time'&&!it.secs) it.secs=45; if(v!=='time'&&!it.reps) it.reps=10; }
     else if(k==='rest'||k==='step') e[k]=+v;
+    else if(k==='side') e.side=v==='1';
     else if(k==='cap'){ const c=parseFloat(String(v).replace(',','.')); e.cap=isFinite(c)&&c>0?c:0; }
     else if(k==='strava') e.strava=v.trim().toUpperCase().replace(/[^A-Z0-9]+/g,'_').replace(/^_|_$/g,'');
     else e[k]=v.trim();
