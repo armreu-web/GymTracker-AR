@@ -1,7 +1,7 @@
 (function(){
 'use strict';
 const KEY='gymtracker.v1';
-const VERSION='0.5.0';
+const VERSION='0.5.1';
 const GEN=window.GTGen;
 
 /* ---------------- state ---------------- */
@@ -154,7 +154,8 @@ function startWorkout(plan){
 // Vorschlag bleibt stehen, bis ein neues Training gespeichert wird (dann kommt der nächste Schwerpunkt)
 function ensureGen(){
   const g=S.gen;
-  if(g&&g.v===1&&!S.history.some(h=>h.start>=g.created)) return g;
+  // gespeicherter Vorschlag fliegt auch raus, wenn eine Übung inzwischen nicht mehr im Katalog ist (z. B. Seal Row)
+  if(g&&g.v===1&&!S.history.some(h=>h.start>=g.created)&&g.items.every(i=>GEN.CAT[i.ex])) return g;
   S.gen=GEN.generate(S,GEN.suggestFocus(S)); save(); return S.gen;
 }
 function regen(focus){ S.gen=GEN.generate(S,focus||S.gen.focus); save(); }

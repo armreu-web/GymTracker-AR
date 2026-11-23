@@ -39,7 +39,7 @@ const CAT={};
   C('cabrow','Rudern am Kabel sitzend','weight','SEATED_CABLE_ROW',{pats:['hpull'],eq:['cable'],step:1,w0:30,how:'Aufrecht sitzen, Knie leicht gebeugt, Griff zum Bauchnabel. Oberkörper schwingt nicht mit, der Rücken bleibt neutral.'}),
   C('mrow','Rudermaschine','weight','MACHINE_SEATED_ROW',{pats:['hpull'],eq:['machine'],step:1,w0:30,how:'Brust ans Polster, Griffe zu dir ziehen, Schulterblätter am Ende zusammen, langsam zurück.'}),
   C('dbrow','Einarmiges Rudern KH','weight','DUMBBELL_ROW',{pats:['hpull'],eq:['dumbbell'],w0:15,note:'Wdh. pro Seite.',how:'Knie und Hand auf der Bank abstützen, Rücken flach. Hantel zur Hüfte ziehen, nicht reißen.'}),
-  C('sealrow','Seal Row (bauchliegend)','weight','SEAL_ROW',{pats:['hpull'],eq:['dumbbell'],w0:10,how:'Bauchlings auf der erhöhten Flachbank, zwei Kurzhanteln hochziehen. Die Bank nimmt dem unteren Rücken alles ab.'}),
+  // Seal Row raus (Armin, 23.11.): keine passende Bank im Studio
   C('sapd','Überzug am Kabel (gestreckte Arme)','weight','STRAIGHT_ARM_PULLDOWN',{pats:['scap','vpull'],eq:['cable'],step:1,w0:15,how:'Stehend, Arme fast gestreckt, Stange oder Seil in einem Bogen zu den Oberschenkeln drücken. Rumpf fest, kein Hohlkreuz.'}),
   C('pullap','Pull-Apart am Kabel','weight','CABLE_PULL_APART',{pats:['scap'],eq:['cable'],step:1,w0:5,reps:12,how:'Zwei Kabel überkreuz greifen, Arme auf Schulterhöhe auseinanderziehen, Schulterblätter zusammen. Leichtes Gewicht.'}),
 
